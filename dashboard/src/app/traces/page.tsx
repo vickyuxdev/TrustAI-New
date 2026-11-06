@@ -13,7 +13,7 @@ import { projectLabels } from "@/lib/projects";
 import { describeTimeRange, rangePhrase, resolveTimeRange } from "@/lib/timeRange";
 import { useTimeRange } from "@/lib/useTimeRange";
 
-const PAGE = 50;
+const PAGE = 15;
 const ERR_LIMIT = 5; // %
 const SLOW_MS = 5000;
 type Kind = "all" | "agent" | "llm" | "tool";
