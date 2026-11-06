@@ -442,3 +442,31 @@ export function AreaSpark({ values, height = 44, color = "var(--accent)", ariaLa
     </div>
   );
 }
+
+/**
+ * Semicircle budget gauge: filled arc = used share, dashed tick = projected share at period end.
+ * Colours follow status (on track / near / over).
+ */
+export function Gauge({ used, projected, size = 210, center }: { used: number; projected?: number | null; size?: number; center?: ReactNode }) {
+  const stroke = 14, R = size / 2 - stroke / 2 - 2, cx = size / 2, cy = size / 2;
+  const H = size / 2 + 8;
+  const L = Math.PI * R;
+  const f = Math.max(0, Math.min(1, used));
+  const status = used > 1 || (projected ?? 0) > 1 ? (used > 1 ? "var(--danger)" : "var(--wait)") : used >= 0.8 ? "var(--wait)" : "var(--accent)";
+  const arc = `M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${cx + R} ${cy}`;
+  const pf = projected == null ? null : Math.max(0, Math.min(1, projected));
+  const pa = pf == null ? 0 : Math.PI * (1 - pf);
+  return (
+    <div className="gauge" style={{ width: size, height: H }}>
+      <svg width={size} height={H} viewBox={`0 0 ${size} ${H}`} aria-hidden>
+        <path d={arc} fill="none" stroke="var(--hover)" strokeWidth={stroke} strokeLinecap="round" />
+        {f > 0 && <path d={arc} fill="none" stroke={status} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${f * L} ${L}`} />}
+        {pf != null && (
+          <line x1={cx + Math.cos(pa) * (R - stroke / 2 - 3)} y1={cy - Math.sin(pa) * (R - stroke / 2 - 3)} x2={cx + Math.cos(pa) * (R + stroke / 2 + 3)} y2={cy - Math.sin(pa) * (R + stroke / 2 + 3)}
+            stroke="var(--text)" strokeWidth={2} strokeLinecap="round" />
+        )}
+      </svg>
+      <div className="gauge-c">{center}</div>
+    </div>
+  );
+}

@@ -1,13 +1,14 @@
 "use client";
-import { createElement, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, BookOpen, FileText, FolderKanban, Headset, Plus, Receipt, ScanSearch, Search, ShieldCheck, Stethoscope, TrendingUp, Users, Wallet, Zap, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowUp, FolderKanban, Plus, Search, Wallet, Zap } from "lucide-react";
 import { ProjectForm } from "@/components/ProjectForm";
 import { MiniBars, Ring, Segments, Sparkline } from "@/components/charts";
 import { Card, Delta, Empty, ErrorState, Kpi, PageHead, Seg, Skel } from "@/components/ui";
 import { useClients, useCostBreakdown, useOverviewMetrics, useProjects, type Project } from "@/lib/api";
 import { compact, day, usd, usdShort } from "@/lib/format";
+import { projectIcon } from "@/lib/projectIcon";
 import { projectLabels } from "@/lib/projects";
 import { fillDays } from "@/lib/series";
 import { resolveTimeRange, timeRangeKey, type TimeRangeSpec } from "@/lib/timeRange";
@@ -103,12 +104,6 @@ export default function ProjectsPage() {
   );
 }
 
-const ICONS: [RegExp, LucideIcon][] = [
-  [/clinic|health|patient|medic|note/i, Stethoscope], [/support|ticket|help|service/i, Headset], [/invoice|billing|payment|finance/i, Receipt],
-  [/policy|q&a|faq|knowledge|docs?/i, BookOpen], [/sales|pipeline|forecast|insight/i, TrendingUp], [/hr|people|employee/i, Users],
-  [/claim|insur/i, ShieldCheck], [/search|discover/i, ScanSearch], [/contract|legal/i, FileText],
-];
-const iconFor = (name: string, desc = "") => createElement(ICONS.find(([r]) => r.test(name))?.[1] ?? ICONS.find(([r]) => r.test(desc))?.[1] ?? FolderKanban, { className: "ic" });
 
 /** Low-visibility abstract shapes for the card background, tinted per client. */
 function CardArt() {
@@ -132,7 +127,7 @@ function ProjectCard({ p, name, prevSpec }: { p: Project; name: string; prevSpec
     <Link href={`/projects/${p.id}`} className="pj-card">
       <CardArt />
       <div className="pj-head">
-        <span className="pj-icon" aria-hidden>{iconFor(name, p.description ?? "")}</span>
+        <span className="pj-icon" aria-hidden>{projectIcon(name, p.description ?? "")}</span>
         <div className="pj-id"><b title={name}>{name}</b><span>{model ?? "No model calls yet"}</span></div>
         <span className={`pj-status${live ? "" : " idle"}`}><i aria-hidden />{live ? "Monitored" : "Idle"}</span>
       </div>
