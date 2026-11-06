@@ -3,7 +3,7 @@
  * Lightweight SVG charts in the Evergreen style: thin marks, rounded data ends,
  * recessive grid, value labels where few, hover tooltips everywhere.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 // ─── helpers ────────────────────────────────────────────────────────────
 
@@ -356,6 +356,67 @@ export function ShareBar({ slices, active }: { slices: Slice[]; active?: number 
       {slices.map((s, i) => (
         <i key={i} style={{ flex: `${Math.round((s.value / total) * 1e6)} 1 0`, background: s.color, opacity: active != null && active !== i ? 0.25 : 1 }} />
       ))}
+    </div>
+  );
+}
+
+// ─── Trend (compact area chart for summary panels) ─────────────────────
+
+/**
+ * Axis-free area trend: soft gradient fill, peak marker with value, end point, start/end date labels.
+ * Hover shows the day's value.
+ */
+export function Trend({ values, labels, longs, fmt, height = 96, ariaLabel }: {
+  values: number[]; labels: string[]; longs?: string[]; fmt: (v: number) => string; height?: number; ariaLabel: string;
+}) {
+  const [ref, { w }] = useSize<HTMLDivElement>();
+  const [hover, setHover] = useState<number | null>(null);
+  const gid = useId().replace(/:/g, "");
+  const H = height, n = values.length;
+  const m = { l: 2, r: 2, t: 20, b: 20 };
+  const pw = Math.max(0, w - m.l - m.r), ph = H - m.t - m.b;
+  const max = Math.max(1e-9, ...values) * 1.04;
+  const x = (i: number) => m.l + (n <= 1 ? pw / 2 : (i / (n - 1)) * pw);
+  const y = (v: number) => m.t + ph - (v / max) * ph;
+  const peak = values.reduce((bi, v, i) => (v > values[bi] ? i : bi), 0);
+  const pts = values.map((v, i) => [x(i), y(v)] as [number, number]);
+  const tip: TipState = hover == null ? null : { x: x(hover), y: y(values[hover]), title: longs?.[hover] ?? labels[hover], rows: [{ name: "Spend", value: fmt(values[hover]) }] };
+  const peakAnchor = x(peak) < 60 ? "start" : x(peak) > w - 60 ? "end" : "middle";
+  return (
+    <div className="chart" ref={ref} style={{ height: H }}>
+      {w > 0 && n > 1 && (
+        <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img" aria-label={ariaLabel}
+          onMouseMove={(e) => { const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect(); setHover(Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left - m.l) / (pw || 1)) * (n - 1))))); }}
+          onMouseLeave={() => setHover(null)}>
+          <defs>
+            <linearGradient id={`tg${gid}`} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <line x1={m.l} x2={w - m.r} y1={m.t + ph + 0.5} y2={m.t + ph + 0.5} className="bl" />
+          <path d={`${smooth(pts)} L${x(n - 1)} ${m.t + ph} L${x(0)} ${m.t + ph} Z`} fill={`url(#tg${gid})`} />
+          <path d={smooth(pts)} fill="none" stroke="var(--accent)" strokeWidth={1.75} strokeLinecap="round" />
+          <line x1={x(peak)} x2={x(peak)} y1={y(values[peak])} y2={m.t + ph} stroke="var(--accent-line)" strokeDasharray="2 3" />
+          <circle cx={x(peak)} cy={y(values[peak])} r={3.5} fill="var(--panel)" stroke="var(--accent)" strokeWidth={1.75} />
+          <text x={x(peak)} y={y(values[peak]) - 8} textAnchor={peakAnchor} className="ax" style={{ fill: "var(--text-2)", fontWeight: 600 }}>Peak {fmt(values[peak])}</text>
+          <circle cx={x(n - 1)} cy={y(values[n - 1])} r={3.5} fill="var(--accent)" stroke="var(--panel)" strokeWidth={2} />
+          <text x={m.l} y={H - 4} className="ax">{labels[0]}</text>
+          <text x={w - m.r} y={H - 4} textAnchor="end" className="ax">{labels[n - 1]}</text>
+          {hover != null && <g pointerEvents="none"><line x1={x(hover)} x2={x(hover)} y1={m.t} y2={m.t + ph} stroke="var(--line-2)" /><circle cx={x(hover)} cy={y(values[hover])} r={3.5} fill="var(--accent)" stroke="var(--panel)" strokeWidth={2} /></g>}
+        </svg>
+      )}
+      <Tip tip={tip} width={w} />
+    </div>
+  );
+}
+
+/** Horizontal segmented bar (parts in order), 2px gaps, rounded ends. */
+export function Segments({ parts, height = 8, ariaLabel }: { parts: { value: number; color: string; label: string }[]; height?: number; ariaLabel: string }) {
+  const total = parts.reduce((a, p) => a + p.value, 0);
+  return (
+    <div className="segs" role="img" aria-label={ariaLabel} style={{ height }}>
+      {total > 0 ? parts.filter((p) => p.value > 0).map((p) => <i key={p.label} title={`${p.label}: ${p.value}`} style={{ flex: `${p.value} 1 0`, background: p.color }} />) : <i style={{ flex: 1, background: "var(--hover)" }} />}
     </div>
   );
 }
