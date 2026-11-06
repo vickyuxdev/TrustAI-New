@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, BookOpen, FileText, FolderKanban, Headset, Plus, Receipt, ScanSearch, Search, ShieldCheck, Stethoscope, TrendingUp, Users, Wallet, Zap, type LucideIcon } from "lucide-react";
 import { ProjectForm } from "@/components/ProjectForm";
-import { AreaSpark, MiniBars, Ring, Segments, Sparkline } from "@/components/charts";
+import { MiniBars, Ring, Segments, Sparkline } from "@/components/charts";
 import { Card, Delta, Empty, ErrorState, Kpi, PageHead, Seg, Skel } from "@/components/ui";
 import { useClients, useCostBreakdown, useOverviewMetrics, useProjects, type Project } from "@/lib/api";
 import { compact, day, usd, usdShort } from "@/lib/format";
@@ -14,7 +14,6 @@ import { resolveTimeRange, timeRangeKey, type TimeRangeSpec } from "@/lib/timeRa
 
 const SPEC30: TimeRangeSpec = { kind: "preset", preset: "30d" };
 const KEY30 = timeRangeKey(SPEC30);
-const TINTS = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--s2)"];
 type Sort = "spend" | "name" | "newest";
 
 function budgetState(p: Project) {
@@ -90,7 +89,7 @@ export default function ProjectsPage() {
         </Empty></Card>
       ) : (
         <div className="pj-grid">
-          {list.map((p) => <ProjectCard key={p.id} p={p} name={labels[p.id] ?? p.name} client={clientName[p.client_id]} total={spend} prevSpec={prevSpec} tint={TINTS[Math.abs([...p.client_id].reduce((a, c) => a + c.charCodeAt(0), 0)) % TINTS.length]} />)}
+          {list.map((p) => <ProjectCard key={p.id} p={p} name={labels[p.id] ?? p.name} prevSpec={prevSpec} />)}
           <button type="button" className="pj-card pj-new" onClick={() => setOpen(true)}>
             <span className="pj-new-i" aria-hidden><Plus className="ic" /></span>
             <b>New project</b>
@@ -115,19 +114,14 @@ const iconFor = (name: string, desc = "") => createElement(ICONS.find(([r]) => r
 function CardArt() {
   return (
     <svg className="pj-art" viewBox="0 0 240 200" aria-hidden preserveAspectRatio="xMaxYMin slice">
-      <defs><radialGradient id="pjglow" cx="78%" cy="18%" r="60%"><stop offset="0%" stopColor="var(--tint)" stopOpacity=".16" /><stop offset="100%" stopColor="var(--tint)" stopOpacity="0" /></radialGradient></defs>
-      <rect width="240" height="200" fill="url(#pjglow)" />
-      {[38, 62, 86, 110, 134].map((r, i) => <circle key={r} cx="212" cy="20" r={r} fill="none" stroke="var(--tint)" strokeOpacity={0.13 - i * 0.02} strokeWidth="1" />)}
-      <path d="M118 6 l10 0 M123 1 l0 10" stroke="var(--tint)" strokeOpacity=".22" strokeWidth="1.2" strokeLinecap="round" />
+      {[38, 62, 86, 110, 134].map((r, i) => <circle key={r} cx="212" cy="20" r={r} fill="none" stroke="currentColor" strokeOpacity={0.09 - i * 0.012} strokeWidth="1" />)}
     </svg>
   );
 }
 
-function ProjectCard({ p, name, tint, prevSpec }: { p: Project; name: string; client?: string; total?: number; tint: string; prevSpec: TimeRangeSpec }) {
+function ProjectCard({ p, name, prevSpec }: { p: Project; name: string; prevSpec: TimeRangeSpec }) {
   const cost = useCostBreakdown(SPEC30, KEY30, { project_id: p.id });
   const prev = useCostBreakdown(prevSpec, timeRangeKey(prevSpec), { project_id: p.id });
-  const range = useMemo(() => resolveTimeRange(SPEC30), []);
-  const days = useMemo(() => fillDays(cost.data?.time_series ?? [], range.from, range.to), [cost.data, range]);
   const spend = p.total_cost_usd ?? 0, calls = p.total_calls ?? 0;
   const prevSpend = prev.data ? prev.data.time_series.reduce((a, d) => a + d.total_cost_usd, 0) : null;
   const change = prevSpend ? ((spend - prevSpend) / prevSpend) * 100 : null;
@@ -135,7 +129,7 @@ function ProjectCard({ p, name, tint, prevSpec }: { p: Project; name: string; cl
   const b = budgetState(p);
   const live = calls > 0;
   return (
-    <Link href={`/projects/${p.id}`} className="pj-card" style={{ ["--tint" as string]: tint } as React.CSSProperties}>
+    <Link href={`/projects/${p.id}`} className="pj-card">
       <CardArt />
       <div className="pj-head">
         <span className="pj-icon" aria-hidden>{iconFor(name, p.description ?? "")}</span>
@@ -144,7 +138,6 @@ function ProjectCard({ p, name, tint, prevSpec }: { p: Project; name: string; cl
       </div>
 
       <div className="pj-total">
-        <div className="pj-wave" aria-hidden>{days.length > 2 && <AreaSpark values={days.map((_, i) => { const w = days.slice(Math.max(0, i - 2), i + 3); return w.reduce((a, d) => a + d.cost, 0) / w.length; })} height={58} color={tint} />}</div>
         <span className="pj-lbl">Total spend · 30 days</span>
         <b className="num">{usd(spend)}</b>
         <span className="pj-chg">

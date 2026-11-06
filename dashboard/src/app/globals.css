@@ -558,12 +558,12 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 20px; ma
 .pj-bar > div:first-child { display: flex; align-items: baseline; gap: 10px; }
 .pj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 14px; }
 .pj-card { --tint: var(--accent); position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 18px 20px; border-radius: 16px; overflow: hidden; text-align: left; color: var(--text);
-  background: linear-gradient(160deg, var(--panel) 0%, color-mix(in srgb, var(--tint) 3%, var(--panel)) 100%); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(16, 24, 20, .04), 0 8px 24px -16px rgba(16, 24, 20, .12);
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(16, 24, 20, .04), 0 8px 24px -16px rgba(16, 24, 20, .12);
   transition: border-color .18s, box-shadow .18s, transform .18s; }
-a.pj-card:hover { border-color: color-mix(in srgb, var(--tint) 35%, var(--line)); box-shadow: 0 1px 2px rgba(16, 24, 20, .05), 0 16px 32px -18px color-mix(in srgb, var(--tint) 45%, transparent); transform: translateY(-2px); }
-.pj-art { position: absolute; top: 0; right: 0; width: 62%; height: 62%; z-index: -1; pointer-events: none; }
+a.pj-card:hover { border-color: var(--accent-line); box-shadow: 0 1px 2px rgba(16, 24, 20, .05), 0 16px 32px -18px rgba(16, 60, 44, .28); transform: translateY(-2px); }
+.pj-art { position: absolute; top: 0; right: 0; width: 62%; height: 62%; z-index: -1; pointer-events: none; color: var(--text); }
 .pj-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
-.pj-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; color: var(--tint); background: color-mix(in srgb, var(--tint) 11%, var(--panel)); border: 1px solid color-mix(in srgb, var(--tint) 18%, transparent); }
+.pj-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-line); }
 .pj-icon .ic { width: 20px; height: 20px; }
 .pj-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .pj-id b { font-size: 14.5px; font-weight: 600; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -572,7 +572,6 @@ a.pj-card:hover { border-color: color-mix(in srgb, var(--tint) 35%, var(--line))
 .pj-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .pj-status.idle { color: var(--text-3); background: var(--hover); } .pj-status.idle i { background: var(--text-3); }
 .pj-total { position: relative; display: flex; flex-direction: column; gap: 2px; }
-.pj-wave { position: absolute; right: -20px; bottom: 0; width: 55%; opacity: .45; z-index: -1; pointer-events: none; -webkit-mask-image: linear-gradient(90deg, transparent, #000 40%); mask-image: linear-gradient(90deg, transparent, #000 40%); }
 .pj-lbl { font-size: 12px; color: var(--text-3); }
 .pj-total > b { font-size: 28px; font-weight: 650; letter-spacing: -.03em; line-height: 1.2; }
 .pj-chg { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--text-3); }
