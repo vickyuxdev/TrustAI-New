@@ -1,19 +1,17 @@
 "use client";
-import { useMemo, useState } from "react";
+import { createElement, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, FolderKanban, Plus, Search, Wallet, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, BookOpen, FileText, FolderKanban, Headset, Plus, Receipt, ScanSearch, Search, ShieldCheck, Stethoscope, TrendingUp, Users, Wallet, Zap, type LucideIcon } from "lucide-react";
 import { ProjectForm } from "@/components/ProjectForm";
 import { AreaSpark, MiniBars, Ring, Segments, Sparkline } from "@/components/charts";
-import { Card, Delta, Empty, ErrorState, Kpi, PageHead, Pill, Seg, Skel } from "@/components/ui";
+import { Card, Delta, Empty, ErrorState, Kpi, PageHead, Seg, Skel } from "@/components/ui";
 import { useClients, useCostBreakdown, useOverviewMetrics, useProjects, type Project } from "@/lib/api";
-import { compact, day, share, usd, usdShort } from "@/lib/format";
+import { compact, day, usd, usdShort } from "@/lib/format";
 import { projectLabels } from "@/lib/projects";
 import { fillDays } from "@/lib/series";
 import { resolveTimeRange, timeRangeKey, type TimeRangeSpec } from "@/lib/timeRange";
 
-const MODE_TONE = { full: "wait", masked: "accent", disabled: undefined } as const;
-const MODE_LABEL = { full: "Full capture", masked: "Masked", disabled: "Capture off" } as const;
 const SPEC30: TimeRangeSpec = { kind: "preset", preset: "30d" };
 const KEY30 = timeRangeKey(SPEC30);
 const TINTS = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--s2)"];
@@ -38,6 +36,7 @@ export default function ProjectsPage() {
   const range = useMemo(() => resolveTimeRange(SPEC30), []);
   const days = useMemo(() => fillDays(cost.data?.time_series ?? [], range.from, range.to), [cost.data, range]);
   const items = useMemo(() => data?.items ?? [], [data]);
+  const prevSpec = useMemo<TimeRangeSpec>(() => ({ kind: "custom", from: new Date(range.from.getTime() - 30 * 86_400_000).toISOString(), to: range.from.toISOString() }), [range]);
   const labels = useMemo(() => projectLabels(items), [items]);
   const clientName = useMemo(() => Object.fromEntries((clients.data?.items ?? []).map((c) => [c.id, c.name])), [clients.data]);
 
@@ -91,7 +90,7 @@ export default function ProjectsPage() {
         </Empty></Card>
       ) : (
         <div className="pj-grid">
-          {list.map((p) => <ProjectCard key={p.id} p={p} name={labels[p.id] ?? p.name} client={clientName[p.client_id]} total={spend} tint={TINTS[Math.abs([...p.client_id].reduce((a, c) => a + c.charCodeAt(0), 0)) % TINTS.length]} />)}
+          {list.map((p) => <ProjectCard key={p.id} p={p} name={labels[p.id] ?? p.name} client={clientName[p.client_id]} total={spend} prevSpec={prevSpec} tint={TINTS[Math.abs([...p.client_id].reduce((a, c) => a + c.charCodeAt(0), 0)) % TINTS.length]} />)}
           <button type="button" className="pj-card pj-new" onClick={() => setOpen(true)}>
             <span className="pj-new-i" aria-hidden><Plus className="ic" /></span>
             <b>New project</b>
@@ -105,39 +104,69 @@ export default function ProjectsPage() {
   );
 }
 
-function ProjectCard({ p, name, client, total, tint }: { p: Project; name: string; client?: string; total: number; tint: string }) {
+const ICONS: [RegExp, LucideIcon][] = [
+  [/clinic|health|patient|medic|note/i, Stethoscope], [/support|ticket|help|service/i, Headset], [/invoice|billing|payment|finance/i, Receipt],
+  [/policy|q&a|faq|knowledge|docs?/i, BookOpen], [/sales|pipeline|forecast|insight/i, TrendingUp], [/hr|people|employee/i, Users],
+  [/claim|insur/i, ShieldCheck], [/search|discover/i, ScanSearch], [/contract|legal/i, FileText],
+];
+const iconFor = (name: string, desc = "") => createElement(ICONS.find(([r]) => r.test(name))?.[1] ?? ICONS.find(([r]) => r.test(desc))?.[1] ?? FolderKanban, { className: "ic" });
+
+/** Low-visibility abstract shapes for the card background, tinted per client. */
+function CardArt() {
+  return (
+    <svg className="pj-art" viewBox="0 0 240 200" aria-hidden preserveAspectRatio="xMaxYMin slice">
+      <defs><radialGradient id="pjglow" cx="78%" cy="18%" r="60%"><stop offset="0%" stopColor="var(--tint)" stopOpacity=".16" /><stop offset="100%" stopColor="var(--tint)" stopOpacity="0" /></radialGradient></defs>
+      <rect width="240" height="200" fill="url(#pjglow)" />
+      {[38, 62, 86, 110, 134].map((r, i) => <circle key={r} cx="212" cy="20" r={r} fill="none" stroke="var(--tint)" strokeOpacity={0.13 - i * 0.02} strokeWidth="1" />)}
+      <path d="M118 6 l10 0 M123 1 l0 10" stroke="var(--tint)" strokeOpacity=".22" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ProjectCard({ p, name, tint, prevSpec }: { p: Project; name: string; client?: string; total?: number; tint: string; prevSpec: TimeRangeSpec }) {
   const cost = useCostBreakdown(SPEC30, KEY30, { project_id: p.id });
+  const prev = useCostBreakdown(prevSpec, timeRangeKey(prevSpec), { project_id: p.id });
   const range = useMemo(() => resolveTimeRange(SPEC30), []);
   const days = useMemo(() => fillDays(cost.data?.time_series ?? [], range.from, range.to), [cost.data, range]);
   const spend = p.total_cost_usd ?? 0, calls = p.total_calls ?? 0;
+  const prevSpend = prev.data ? prev.data.time_series.reduce((a, d) => a + d.total_cost_usd, 0) : null;
+  const change = prevSpend ? ((spend - prevSpend) / prevSpend) * 100 : null;
+  const model = cost.data?.by_model.find((m) => m.total_cost_usd > 0)?.dimension;
   const b = budgetState(p);
-  const initials = name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const live = calls > 0;
   return (
     <Link href={`/projects/${p.id}`} className="pj-card" style={{ ["--tint" as string]: tint } as React.CSSProperties}>
+      <CardArt />
       <div className="pj-head">
-        <span className="pj-mono" aria-hidden>{initials}</span>
-        <div className="pj-id"><b>{name}</b><span>{client ?? p.slug}</span></div>
-        <Pill tone={MODE_TONE[p.content_capture_mode]} dot>{MODE_LABEL[p.content_capture_mode]}</Pill>
+        <span className="pj-icon" aria-hidden>{iconFor(name, p.description ?? "")}</span>
+        <div className="pj-id"><b title={name}>{name}</b><span>{model ?? "No model calls yet"}</span></div>
+        <span className={`pj-status${live ? "" : " idle"}`}><i aria-hidden />{live ? "Monitored" : "Idle"}</span>
       </div>
-      <p className="pj-desc">{p.description || "No description yet."}</p>
-      <div className="pj-money">
-        <div><b className="num">{usd(spend)}</b><span>Spend · 30 days</span></div>
-        <span className="pj-share" title="Share of all project spend">{share(total ? spend / total : 0)}<small>of total</small></span>
+
+      <div className="pj-total">
+        <div className="pj-wave" aria-hidden>{days.length > 2 && <AreaSpark values={days.map((_, i) => { const w = days.slice(Math.max(0, i - 2), i + 3); return w.reduce((a, d) => a + d.cost, 0) / w.length; })} height={58} color={tint} />}</div>
+        <span className="pj-lbl">Total spend · 30 days</span>
+        <b className="num">{usd(spend)}</b>
+        <span className="pj-chg">
+          {change == null ? <span className="muted">No previous period to compare</span> : (
+            <><span className={change <= 0 ? "down" : "up"}>{change <= 0 ? <ArrowDown className="ic" aria-hidden /> : <ArrowUp className="ic" aria-hidden />}{Math.abs(change).toFixed(0)}%</span> vs previous 30 days</>
+          )}
+        </span>
       </div>
-      <div className="pj-spark">{cost.isLoading ? <Skel h={44} /> : <AreaSpark values={days.map((d) => d.cost)} color={tint} ariaLabel={`${name} daily spend, last 30 days`} />}</div>
-      <div className="pj-budget">
-        {b.used == null ? <span className="muted">No monthly budget</span> : (
+
+      <dl className="pj-stats">
+        <div><dt>Total calls</dt><dd>{compact(calls)}</dd></div>
+        <div><dt>Avg. cost / call</dt><dd>{calls ? usd(spend / calls) : "—"}</dd></div>
+        <div><dt>Active since</dt><dd>{day(p.created_at)}</dd></div>
+      </dl>
+
+      <div className={`pj-budget ${b.tone}`}>
+        {b.used == null ? <span className="pj-nobudget">No monthly budget set</span> : (
           <>
-            <span className="pj-track" aria-hidden><i style={{ width: `${Math.min(1, b.used) * 100}%`, background: TONE_COLOR[b.tone] }} /></span>
-            <span style={{ color: b.tone === "over" ? "var(--danger)" : undefined }}><b>{Math.round(b.used * 100)}%</b> of {usdShort(p.monthly_budget_usd ?? 0)} budget</span>
+            <span className="pj-track" aria-hidden><i style={{ width: `${Math.min(1, b.used) * 100}%` }} /></span>
+            <span className="pj-bv"><b>{Math.round(b.used * 100)}%</b><small>of {usdShort(p.monthly_budget_usd ?? 0)} budget</small></span>
           </>
         )}
-      </div>
-      <div className="pj-foot">
-        <span><b>{compact(calls)}</b> calls</span>
-        <span><b>{calls ? usd(spend / calls) : "—"}</b> / call</span>
-        <span>Since {day(p.created_at)}</span>
-        <ArrowUpRight className="ic pj-go" aria-hidden />
       </div>
     </Link>
   );
