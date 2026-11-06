@@ -261,16 +261,17 @@ export function Modal({ open, onClose, title, sub, children, footer, wide }: {
   );
 }
 
-export function Drawer({ open, onClose, title, sub, children, actions }: {
-  open: boolean; onClose: () => void; title: ReactNode; sub?: ReactNode; children: ReactNode; actions?: ReactNode;
+export function Drawer({ open, onClose, title, sub, children, actions, wide, lead }: {
+  open: boolean; onClose: () => void; title: ReactNode; sub?: ReactNode; children: ReactNode; actions?: ReactNode; wide?: boolean; lead?: ReactNode;
 }) {
   useEscape(open, onClose);
   if (!open) return null;
   return (
     <>
       <div className="drawer-wrap" onClick={onClose} aria-hidden />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : "Details"}>
+      <aside className={`drawer${wide ? " wide" : ""}`} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : "Details"}>
         <div className="drawer-h">
+          {lead}
           <div className="grow"><h2 className="card-t" style={{ fontSize: 15 }}>{title}</h2>{sub && <div className="card-s">{sub}</div>}</div>
           {actions}
           <button type="button" className="icon-btn sm" onClick={onClose} aria-label="Close"><X className="ic" /></button>
