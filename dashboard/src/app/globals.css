@@ -614,7 +614,7 @@ a.pj-card:hover { border-color: var(--accent-line); box-shadow: 0 1px 2px rgba(1
 .pd-meta .btn-sm { height: 22px; padding: 0 7px; font-size: 11px; }
 .pd-actions { display: flex; gap: 8px; align-items: center; }
 .pd-budget { gap: 18px; }
-.pd-gauge { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: center; }
+.pd-gauge { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px 22px; align-items: center; }
 .gauge { position: relative; flex: none; }
 .gauge svg { display: block; }
 .gauge-c { position: absolute; left: 0; right: 0; bottom: 6px; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
@@ -627,11 +627,11 @@ a.pj-card:hover { border-color: var(--accent-line); box-shadow: 0 1px 2px rgba(1
 .pd-forecast { font-size: 12.5px; line-height: 1.5; color: var(--text-2); padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); }
 .pd-forecast b { color: var(--text); font-weight: 650; }
 .pd-forecast.bad { background: var(--danger-soft); color: var(--danger); } .pd-forecast.bad b { color: var(--danger); }
-.pd-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
-.pd-mini > div { display: flex; flex-direction: column-reverse; gap: 1px; padding-left: 12px; border-left: 1px solid var(--line-soft); min-width: 0; }
-.pd-mini > div:first-child { padding-left: 0; border-left: 0; }
-.pd-mini dt { font-size: 11.5px; color: var(--text-3); }
-.pd-mini dd { margin: 0; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pd-mini { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.pd-mini > div { display: flex; flex-direction: column-reverse; gap: 2px; padding: 9px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line-soft); min-width: 0; }
+.pd-mini dt { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+.pd-mini dd { margin: 0; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-mini dd small { font-size: 11.5px; font-weight: 500; color: var(--text-3); }
 .pd-nobudget { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 10px; border: 1px dashed var(--line-2); font-size: 12.5px; color: var(--text-2); }
 .pd-nobudget .ic { color: var(--text-3); flex: none; }
 .pd-mix h3, .pd-split h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--text-2); }
@@ -648,7 +648,8 @@ a.pj-card:hover { border-color: var(--accent-line); box-shadow: 0 1px 2px rgba(1
 .pd-link { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 500; color: var(--accent-text); white-space: nowrap; }
 .pd-link .ic { width: 13px; height: 13px; }
 @container pane (max-width: 1100px) { .pd-hero { grid-template-columns: auto minmax(0, 1fr); } .pd-actions { grid-column: 1 / -1; } }
-@container pane (max-width: 820px) { .pd-gauge { grid-template-columns: minmax(0, 1fr); justify-items: center; } .pd-split { grid-template-columns: minmax(0, 1fr); } }
+@container pane (max-width: 820px) { .pd-split { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 470px) { .pd-gauge { grid-template-columns: minmax(0, 1fr); justify-items: center; } .pd-gauge-txt, .pd-mini { width: 100%; justify-self: stretch; } .pd-mini > div { padding: 8px 10px; } }
 
 /* ── Segmented bars ── */
 .segs { display: flex; gap: 2px; border-radius: 4px; overflow: hidden; height: 8px; }

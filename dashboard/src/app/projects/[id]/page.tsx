@@ -216,12 +216,12 @@ function BudgetCard({ budget, mtd, models, envs, providers, total, loading, onEd
                 {over ? <>On pace for <b>{usd(projected!)}</b> — about <b>{usd(projected! - budget)}</b> over by {monthName} {dim}.</>
                   : <>On pace for <b>{usd(projected ?? 0)}</b> by {monthName} {dim} — within budget.</>}
               </div>
-              <dl className="pd-mini">
-                <div><dt>Run rate</dt><dd>{usd(runRate)}/day</dd></div>
-                <div><dt>Days left</dt><dd>{Math.ceil(left)}</dd></div>
-                <div><dt>Can spend</dt><dd>{left ? `${usd(Math.max(0, budget - (mtd ?? 0)) / left)}/day` : "—"}</dd></div>
-              </dl>
             </div>
+            <dl className="pd-mini">
+              <div><dt>Spending now</dt><dd>{usd(runRate)}<small>/day</small></dd></div>
+              <div><dt>Can spend</dt><dd>{left ? usd(Math.max(0, budget - (mtd ?? 0)) / left) : "—"}<small>/day</small></dd></div>
+              <div><dt>Days left</dt><dd>{Math.ceil(left)}<small> of {dim}</small></dd></div>
+            </dl>
           </div>
         ) : (
           <div className="pd-nobudget"><Wallet className="ic" aria-hidden /><span>Set a monthly budget to see how this month is tracking and get a forecast for month-end.</span></div>
