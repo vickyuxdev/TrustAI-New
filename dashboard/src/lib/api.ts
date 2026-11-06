@@ -3,7 +3,7 @@
  * Typed client for the Analytics API (/api/backend → services/api) and the Admin service
  * (/api/admin → services/admin). Shapes mirror shared/models/schemas.py and the routers.
  */
-import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { timeRangeQuery, type TimeRangeSpec } from "@/lib/timeRange";
 
 // ─── Types ───────────────────────────────────────────────────────────────
@@ -272,6 +272,9 @@ export const useOverviewMetrics = (spec: TimeRangeSpec, key: string) =>
   useQuery<OverviewMetrics, ApiError>({ queryKey: ["overview", key], queryFn: () => api(`overview${qs(rq(spec))}`), retry, refetchInterval: 60_000 });
 
 export interface CostFilters { project_id?: string; environment?: string; client_id?: string }
+/** Several cost breakdowns in parallel (same cache keys as useCostBreakdown). */
+export const useCostBreakdowns = (spec: TimeRangeSpec, key: string, list: CostFilters[]) =>
+  useQueries({ queries: list.map((f) => ({ queryKey: ["cost", key, f], queryFn: () => api<CostBreakdown>(`cost/breakdown${qs({ ...rq(spec), ...f })}`), retry })) });
 export const useCostBreakdown = (spec: TimeRangeSpec, key: string, f: CostFilters = {}) =>
   useQuery<CostBreakdown, ApiError>({
     queryKey: ["cost", key, f],

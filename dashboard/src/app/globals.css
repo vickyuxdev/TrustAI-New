@@ -768,3 +768,20 @@ tbody tr.tr-fail td { background: color-mix(in srgb, var(--danger) 3%, var(--pan
 .td-meta td, .td-meta th { padding: 8px 12px; }
 @container (max-width: 760px) { .td-tiles, .td-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .td-axis, .td-row { grid-template-columns: minmax(0, 200px) minmax(0, 1fr) 64px; } }
 .drawer-b { container-type: inline-size; }
+
+/* ── Clients ── */
+.cl-mono { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none; font-size: 12px; font-weight: 650; letter-spacing: .02em; color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-line); }
+.cl-desc { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.cl-proj { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-table .ag-v .ag-health { height: 20px; font-size: 11px; padding: 0 8px; }
+.cl-go { width: 16px; height: 16px; color: var(--text-3); transition: transform .15s, color .15s; }
+tr:hover .cl-go { color: var(--accent-text); transform: translateX(2px); }
+.cl-mix { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); gap: 24px; padding: 14px 18px 18px; }
+.cl-side { display: flex; flex-direction: column; gap: 18px; padding-left: 24px; border-left: 1px solid var(--line-soft); }
+.cl-side h3 { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.cl-rank { display: flex; flex-direction: column; gap: 10px; }
+.cl-rank li { display: grid; grid-template-columns: 8px minmax(0, 150px) minmax(0, 1fr) 40px 76px; gap: 10px; align-items: center; font-size: 12.5px; }
+.cl-rank li > i { width: 8px; height: 8px; border-radius: 2px; }
+.cl-rank .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-rank b { text-align: right; font-weight: 650; } .cl-rank .v { text-align: right; color: var(--text-3); }
+@container pane (max-width: 1100px) { .cl-mix { grid-template-columns: minmax(0, 1fr); } .cl-side { padding-left: 0; border-left: 0; padding-top: 16px; border-top: 1px solid var(--line-soft); } }
