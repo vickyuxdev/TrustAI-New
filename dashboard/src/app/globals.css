@@ -527,7 +527,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); height: 20px; ma
 .checklist .ci.bad { background: var(--danger-soft); color: var(--danger); }
 .checklist .ci svg { width: 12px; height: 12px; }
 .checklist b { display: block; font-weight: 600; color: var(--text); }
-.checklist small { color: var(--text-3); font-size: 12px; }
+.checklist small { display: block; color: var(--text-3); font-size: 12px; margin-top: 2px; }
 .timeline { position: relative; padding-left: 18px; }
 .timeline::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1px; background: var(--line-2); }
 .timeline li { position: relative; padding: 0 0 14px; font-size: 12.5px; }
