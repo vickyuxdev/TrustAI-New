@@ -420,3 +420,25 @@ export function Segments({ parts, height = 8, ariaLabel }: { parts: { value: num
     </div>
   );
 }
+
+/** Full-width, axis-free area sparkline that fills its container (for cards). */
+export function AreaSpark({ values, height = 44, color = "var(--accent)", ariaLabel }: { values: number[]; height?: number; color?: string; ariaLabel?: string }) {
+  const [ref, { w }] = useSize<HTMLDivElement>();
+  const gid = useId().replace(/:/g, "");
+  const n = values.length, H = height;
+  const mx = Math.max(1e-9, ...values), mn = Math.min(...values) * 0.85;
+  const x = (i: number) => (n <= 1 ? w / 2 : (i / (n - 1)) * w);
+  const y = (v: number) => 4 + (H - 6) * (1 - (v - mn) / (mx - mn || 1));
+  const pts = values.map((v, i) => [x(i), y(v)] as [number, number]);
+  return (
+    <div className="chart" ref={ref} style={{ height: H }}>
+      {w > 0 && n > 1 && (
+        <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role={ariaLabel ? "img" : undefined} aria-label={ariaLabel} aria-hidden={ariaLabel ? undefined : true} preserveAspectRatio="none">
+          <defs><linearGradient id={`as${gid}`} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity="0.2" /><stop offset="100%" stopColor={color} stopOpacity="0" /></linearGradient></defs>
+          <path d={`${smooth(pts)} L${w} ${H} L0 ${H} Z`} fill={`url(#as${gid})`} />
+          <path d={smooth(pts)} fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        </svg>
+      )}
+    </div>
+  );
+}
