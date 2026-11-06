@@ -1,0 +1,21 @@
+**/node_modules
+**/.next
+**/.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.venv
+**/venv
+**/env
+dashboard/node_modules
+dashboard/.next
+
+# Secrets and local state must never enter an image
+.env
+.env.*
+!.env.example
+.local
+**/*.db
+**/*.sqlite*
+*.pem
+*.key

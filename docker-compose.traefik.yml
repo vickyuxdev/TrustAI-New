@@ -1,0 +1,517 @@
+# Standalone TrustAI HTTPS stack. Run ONLY this file, not the local-development Compose.
+# Keep -p rt-trustai-v2 to retain existing database volumes. Do not run down -v.
+# Requires Docker Compose >= 2.23.1 for inline configs; no extra route files are needed.
+---
+x-common-env:
+  TRUSTAI_ENVIRONMENT: development
+  TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+  TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+  TRUSTAI_REDIS_URL: redis://redis:6379/0
+  AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+  AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+  AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+  TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+  TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+  AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+  AZURE_EVENTHUB_NAME: trustai-telemetry
+  APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+  TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+services:
+  traefik:
+    image: "${TRUSTAI_TRAEFIK_IMAGE:-traefik:v3}"
+    restart: unless-stopped
+    command:
+    - --log.level=INFO
+    - --api.dashboard=false
+    - --providers.file.directory=/etc/traefik/dynamic
+    - --providers.file.watch=true
+    - --entrypoints.web.address=:80
+    - --entrypoints.web.http.redirections.entrypoint.to=websecure
+    - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    - --entrypoints.websecure.address=:443
+    - --ping=true
+    ports:
+    - 80:80
+    - 443:443
+    configs:
+    - source: trustai-routes
+      target: /etc/traefik/dynamic/trustai.yml
+    volumes:
+    - type: bind
+      source: "${TRUSTAI_TLS_CERTS_DIR:-/home/azureuser/traefik}"
+      target: "/certs"
+      read_only: true
+      bind:
+        create_host_path: false
+    # AI Factory's deploy_vm.py writes one route file per deployed agent here (agent-<slug>.yml). Mounted at the
+    # SAME path as --providers.file.directory itself (not a subdirectory of it) - confirmed by direct test that
+    # Traefik's file provider does NOT recurse into subdirectories, so a nested mount here is silently never read.
+    # Docker nests this bind mount with the trustai-routes config above without conflict (deeper mount wins at
+    # its own path). Default matches deploy_vm.py's own AZURE_VM_ROUTES_DIR default exactly - no change needed
+    # on that side.
+    - type: bind
+      source: "${AI_FACTORY_ROUTES_DIR:-/opt/ai-factory/proxy/dynamic}"
+      target: "/etc/traefik/dynamic"
+      bind:
+        create_host_path: true
+    healthcheck:
+      test:
+      - CMD
+      - traefik
+      - healthcheck
+      - "--ping"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: trustai
+      POSTGRES_PASSWORD: trustai
+      POSTGRES_DB: trustai
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U trustai
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  postgres-analytics:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: trustai
+      POSTGRES_PASSWORD: trustai
+      POSTGRES_DB: trustai_analytics
+    volumes:
+    - analytics_data:/var/lib/postgresql/data
+    - "./infra/docker/init-analytics.sql:/docker-entrypoint-initdb.d/init.sql"
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U trustai -d trustai_analytics
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  migrate:
+    build:
+      context: "."
+      dockerfile: infra/docker/Dockerfile.shared
+    environment:
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+      TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+      TRUSTAI_REDIS_URL: redis://redis:6379/0
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+      TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+      TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+      AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+      AZURE_EVENTHUB_NAME: trustai-telemetry
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-analytics:
+        condition: service_healthy
+  ingestion:
+    build:
+      context: "."
+      dockerfile: services/ingestion/Dockerfile
+    environment:
+      TRUSTAI_ROOT_PATH: /services/ingestion
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+      TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+      TRUSTAI_REDIS_URL: redis://redis:6379/0
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+      TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+      TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+      AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+      AZURE_EVENTHUB_NAME: trustai-telemetry
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+    ports:
+    - 127.0.0.1:8001:8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - "-c"
+      - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  api:
+    build:
+      context: "."
+      dockerfile: services/api/Dockerfile
+    environment:
+      TRUSTAI_ROOT_PATH: /services/api
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+      TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+      TRUSTAI_REDIS_URL: redis://redis:6379/0
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+      TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+      TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+      AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+      AZURE_EVENTHUB_NAME: trustai-telemetry
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+    ports:
+    - 127.0.0.1:8002:8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - "-c"
+      - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  admin:
+    build:
+      context: "."
+      dockerfile: services/admin/Dockerfile
+    environment:
+      TRUSTAI_ROOT_PATH: /services/admin
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+      TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+      TRUSTAI_REDIS_URL: redis://redis:6379/0
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+      TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+      TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+      AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+      AZURE_EVENTHUB_NAME: trustai-telemetry
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+    ports:
+    - 127.0.0.1:8003:8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - "-c"
+      - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  processor:
+    build:
+      context: "."
+      dockerfile: services/processor/Dockerfile
+    environment:
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+      TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+      TRUSTAI_REDIS_URL: redis://redis:6379/0
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+      TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+      TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+      AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+      AZURE_EVENTHUB_NAME: trustai-telemetry
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  collector:
+    build:
+      context: "."
+      dockerfile: services/collector/Dockerfile
+    environment:
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+      TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+      TRUSTAI_REDIS_URL: redis://redis:6379/0
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+      TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+      TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+      AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+      AZURE_EVENTHUB_NAME: trustai-telemetry
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  governance:
+    build:
+      context: "."
+      dockerfile: services/governance/Dockerfile
+    environment:
+      TRUSTAI_ROOT_PATH: /services/governance
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+      TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+      TRUSTAI_REDIS_URL: redis://redis:6379/0
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+      TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+      TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+      AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+      AZURE_EVENTHUB_NAME: trustai-telemetry
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+      TRUSTAI_EVAL_EXECUTOR: redis
+      TRUSTAI_PORTAL_URL: https://${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}
+      TRUSTAI_GATEWAY_PUBLIC_URL: https://${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}
+      TRUSTAI_GATEWAY_MODELS: "${TRUSTAI_GATEWAY_MODELS:-}"
+      TRUSTAI_GATEWAY_DEFAULT_MODEL: "${TRUSTAI_GATEWAY_DEFAULT_MODEL:-gpt-4o}"
+      AZURE_CONTENT_SAFETY_ENDPOINT: "${AZURE_CONTENT_SAFETY_ENDPOINT:-}"
+      AZURE_CONTENT_SAFETY_KEY: "${AZURE_CONTENT_SAFETY_KEY:-}"
+      TRUSTAI_JUDGE_PROVIDER: "${TRUSTAI_JUDGE_PROVIDER:-none}"
+      TRUSTAI_JUDGE_BASE_URL: "${TRUSTAI_JUDGE_BASE_URL:-}"
+      TRUSTAI_JUDGE_API_KEY: "${TRUSTAI_JUDGE_API_KEY:-}"
+      TRUSTAI_JUDGE_MODEL: "${TRUSTAI_JUDGE_MODEL:-gpt-4o-mini}"
+    ports:
+    - 127.0.0.1:8004:8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+  governance-worker:
+    build:
+      context: "."
+      dockerfile: services/governance/Dockerfile
+    command:
+    - python
+    - "-m"
+    - app.worker
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - "-c"
+      - import os, redis; redis.Redis.from_url(os.environ['TRUSTAI_REDIS_URL'], socket_timeout=3).ping()
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_POSTGRES_URL: postgresql+asyncpg://trustai:trustai@postgres:5432/trustai
+      TRUSTAI_ANALYTICS_DB_URL: postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics
+      TRUSTAI_REDIS_URL: redis://redis:6379/0
+      AZURE_TENANT_ID: "${AZURE_TENANT_ID:-your-tenant-id}"
+      AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:-your-client-id}"
+      AZURE_CLIENT_SECRET: "${AZURE_CLIENT_SECRET:-your-client-secret}"
+      TRUSTAI_JWT_SECRET: "${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}"
+      TRUSTAI_ENCRYPTION_KEY: "${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}"
+      AZURE_EVENTHUB_CONNECTION_STRING: "${AZURE_EVENTHUB_CONNECTION_STRING:-}"
+      AZURE_EVENTHUB_NAME: trustai-telemetry
+      APPLICATIONINSIGHTS_CONNECTION_STRING: "${APPLICATIONINSIGHTS_CONNECTION_STRING:-}"
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+      TRUSTAI_EVAL_EXECUTOR: redis
+      TRUSTAI_GOVERNANCE_CREATE_TABLES: 'false'
+      TRUSTAI_JUDGE_PROVIDER: "${TRUSTAI_JUDGE_PROVIDER:-none}"
+      TRUSTAI_JUDGE_BASE_URL: "${TRUSTAI_JUDGE_BASE_URL:-}"
+      TRUSTAI_JUDGE_API_KEY: "${TRUSTAI_JUDGE_API_KEY:-}"
+      TRUSTAI_JUDGE_MODEL: "${TRUSTAI_JUDGE_MODEL:-gpt-4o-mini}"
+    depends_on:
+      governance:
+        condition: service_healthy
+    restart: unless-stopped
+  gateway:
+    build:
+      context: "."
+      dockerfile: services/gateway/Dockerfile
+    environment:
+      TRUSTAI_ROOT_PATH: /services/gateway
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_GOVERNANCE_URL: http://governance:8000
+      TRUSTAI_INTERNAL_API_SECRET: "${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}"
+      TRUSTAI_GATEWAY_UPSTREAMS_FILE: "/app/upstreams.yaml"
+      AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT:-}"
+      AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      TRUSTAI_INGEST_URL: http://ingestion:8000
+      TRUSTAI_GATEWAY_INGEST_API_KEY: "${TRUSTAI_GATEWAY_INGEST_API_KEY:-}"
+      TRUSTAI_GATEWAY_INGEST_PROJECT_ID: "${TRUSTAI_GATEWAY_INGEST_PROJECT_ID:-}"
+    ports:
+    - 127.0.0.1:8005:8000
+    depends_on:
+      governance:
+        condition: service_healthy
+    restart: unless-stopped
+  dashboard:
+    build:
+      context: "./dashboard"
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}
+        NEXT_PUBLIC_ADMIN_URL: https://${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}
+        NEXT_PUBLIC_INGESTION_URL: http://localhost:8001
+        INTERNAL_API_URL: http://api:8000
+        INTERNAL_ADMIN_URL: http://admin:8000
+        INTERNAL_GOVERNANCE_URL: http://governance:8000
+    environment:
+      INTERNAL_API_URL: http://api:8000
+      INTERNAL_ADMIN_URL: http://admin:8000
+      INTERNAL_GOVERNANCE_URL: http://governance:8000
+    ports:
+    - 127.0.0.1:3000:3000
+    depends_on:
+    - api
+    - admin
+    - governance
+    restart: unless-stopped
+configs:
+  trustai-routes:
+    content: |
+      http:
+        routers:
+          ai-factory-v2:
+            rule: 'Host(`aifactory.rtdomain.in`)'
+            entryPoints: [websecure]
+            service: ai-factory-v2
+            priority: 100
+            tls: {}
+          trustai-dashboard:
+            rule: 'Host(`${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}`)'
+            entryPoints: [websecure]
+            service: trustai-dashboard
+            priority: 10
+            tls: {}
+          trustai-control:
+            rule: 'Host(`${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}`) && (Path(`/api/v1`) || PathPrefix(`/api/v1/`))'
+            entryPoints: [websecure]
+            service: trustai-control
+            priority: 100
+            tls: {}
+          trustai-api-docs:
+            rule: 'Host(`${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}`) && PathPrefix(`/services/api/`)'
+            entryPoints: [websecure]
+            service: trustai-api
+            middlewares: [trustai-api-prefix]
+            priority: 200
+            tls: {}
+          trustai-admin-docs:
+            rule: 'Host(`${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}`) && PathPrefix(`/services/admin/`)'
+            entryPoints: [websecure]
+            service: trustai-admin
+            middlewares: [trustai-admin-prefix]
+            priority: 200
+            tls: {}
+          trustai-ingestion-docs:
+            rule: 'Host(`${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}`) && PathPrefix(`/services/ingestion/`)'
+            entryPoints: [websecure]
+            service: trustai-ingestion
+            middlewares: [trustai-ingestion-prefix]
+            priority: 200
+            tls: {}
+          trustai-governance-docs:
+            rule: 'Host(`${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}`) && PathPrefix(`/services/governance/`)'
+            entryPoints: [websecure]
+            service: trustai-control
+            middlewares: [trustai-governance-prefix]
+            priority: 200
+            tls: {}
+          trustai-gateway-docs:
+            rule: 'Host(`${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}`) && PathPrefix(`/services/gateway/`)'
+            entryPoints: [websecure]
+            service: trustai-gateway
+            middlewares: [trustai-gateway-prefix]
+            priority: 200
+            tls: {}
+          trustai-gateway:
+            rule: 'Host(`${TRUSTAI_PUBLIC_HOST:-trustai.rtdomain.in}`) && (Path(`/v1`) || PathPrefix(`/v1/`))'
+            entryPoints: [websecure]
+            service: trustai-gateway
+            priority: 100
+            tls: {}
+        services:
+          ai-factory-v2:
+            loadBalancer:
+              servers:
+                - url: http://ai-factory-v2-gateway:80
+          trustai-api:
+            loadBalancer:
+              servers:
+                - url: http://api:8000
+          trustai-admin:
+            loadBalancer:
+              servers:
+                - url: http://admin:8000
+          trustai-ingestion:
+            loadBalancer:
+              servers:
+                - url: http://ingestion:8000
+          trustai-dashboard:
+            loadBalancer:
+              servers:
+                - url: http://dashboard:3000
+          trustai-control:
+            loadBalancer:
+              servers:
+                - url: http://governance:8000
+          trustai-gateway:
+            loadBalancer:
+              servers:
+                - url: http://gateway:8000
+        middlewares:
+          trustai-api-prefix:
+            stripPrefix:
+              prefixes: [/services/api]
+          trustai-admin-prefix:
+            stripPrefix:
+              prefixes: [/services/admin]
+          trustai-ingestion-prefix:
+            stripPrefix:
+              prefixes: [/services/ingestion]
+          trustai-governance-prefix:
+            stripPrefix:
+              prefixes: [/services/governance]
+          trustai-gateway-prefix:
+            stripPrefix:
+              prefixes: [/services/gateway]
+      tls:
+        certificates:
+          - certFile: /certs/fullchain.pem
+            keyFile: /certs/privkey.pem
+
+volumes:
+  postgres_data: 
+  analytics_data:

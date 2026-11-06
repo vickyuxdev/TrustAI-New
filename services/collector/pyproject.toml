@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trustai-collector"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    # Scheduling
+    "apscheduler>=3.10",
+    # HTTP
+    "httpx>=0.27",
+    # Azure SDKs
+    "azure-monitor-query>=1.3",
+    "azure-ai-projects>=1.0.0b1",
+    "azure-identity>=1.16",
+    "azure-mgmt-costmanagement>=4.0",
+    # AWS
+    "boto3>=1.35",
+    # Encryption
+    "cryptography>=42.0",
+    # DB + shared
+    "asyncpg>=0.29",
+    "sqlalchemy[asyncio]>=2.0",
+    "pydantic>=2.0",
+    "structlog>=24.0",
+    "trustai-shared",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

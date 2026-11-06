@@ -1,0 +1,266 @@
+# ─────────────────────────────────────────────
+# TrustAI — Full Local Development Stack
+# ─────────────────────────────────────────────
+# Start everything:  docker compose up --build -d
+# View logs:         docker compose logs -f
+# Stop:              docker compose down
+# ─────────────────────────────────────────────
+
+x-common-env: &common-env
+  TRUSTAI_ENVIRONMENT: development
+  TRUSTAI_POSTGRES_URL: "postgresql+asyncpg://trustai:trustai@postgres:5432/trustai"
+  TRUSTAI_ANALYTICS_DB_URL: "postgresql+asyncpg://trustai:trustai@postgres-analytics:5432/trustai_analytics"
+  TRUSTAI_REDIS_URL: "redis://redis:6379/0"
+  AZURE_TENANT_ID: ${AZURE_TENANT_ID:-your-tenant-id}
+  AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-your-client-id}
+  AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-your-client-secret}
+  TRUSTAI_JWT_SECRET: ${TRUSTAI_JWT_SECRET:-local-dev-secret-change-for-production}
+  TRUSTAI_ENCRYPTION_KEY: ${TRUSTAI_ENCRYPTION_KEY:-dHJ1c3RhaS1kZXYtZW5jcnlwdGlvbi1rZXktMzJieXRlcw==}
+  AZURE_EVENTHUB_CONNECTION_STRING: ${AZURE_EVENTHUB_CONNECTION_STRING:-}
+  AZURE_EVENTHUB_NAME: trustai-telemetry
+  APPLICATIONINSIGHTS_CONNECTION_STRING: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+  TRUSTAI_INTERNAL_API_SECRET: ${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}
+
+services:
+
+  # ── Databases ────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: trustai
+      POSTGRES_PASSWORD: trustai
+      POSTGRES_DB: trustai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trustai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-analytics:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: trustai
+      POSTGRES_PASSWORD: trustai
+      POSTGRES_DB: trustai_analytics
+    volumes:
+      - analytics_data:/var/lib/postgresql/data
+      - ./infra/docker/init-analytics.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trustai -d trustai_analytics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Table Initializer ─────────────────────────────────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.shared
+    environment:
+      <<: *common-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-analytics:
+        condition: service_healthy
+
+  # ── Backend Services ─────────────────────────────────────────
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    environment:
+      <<: *common-env
+    ports:
+      - "8001:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      <<: *common-env
+    ports:
+      - "8002:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: .
+      dockerfile: services/admin/Dockerfile
+    environment:
+      <<: *common-env
+    ports:
+      - "8003:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  processor:
+    build:
+      context: .
+      dockerfile: services/processor/Dockerfile
+    environment:
+      <<: *common-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ── Collector (multi-cloud metrics pull every 10 min) ─────────
+  collector:
+    build:
+      context: .
+      dockerfile: services/collector/Dockerfile
+    environment:
+      <<: *common-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ── Governance (registry · risk · guardrails · policies · red-team · gateway control) ──
+  governance:
+    build:
+      context: .
+      dockerfile: services/governance/Dockerfile
+    environment:
+      <<: *common-env
+      TRUSTAI_EVAL_EXECUTOR: redis
+      TRUSTAI_PORTAL_URL: ${TRUSTAI_PORTAL_URL:-http://localhost:3000}
+      TRUSTAI_GATEWAY_PUBLIC_URL: ${TRUSTAI_GATEWAY_PUBLIC_URL:-http://localhost:8005}
+      TRUSTAI_GATEWAY_MODELS: ${TRUSTAI_GATEWAY_MODELS:-}
+      TRUSTAI_GATEWAY_DEFAULT_MODEL: ${TRUSTAI_GATEWAY_DEFAULT_MODEL:-gpt-4o}
+      AZURE_CONTENT_SAFETY_ENDPOINT: ${AZURE_CONTENT_SAFETY_ENDPOINT:-}
+      AZURE_CONTENT_SAFETY_KEY: ${AZURE_CONTENT_SAFETY_KEY:-}
+      TRUSTAI_JUDGE_PROVIDER: ${TRUSTAI_JUDGE_PROVIDER:-none}
+      TRUSTAI_JUDGE_BASE_URL: ${TRUSTAI_JUDGE_BASE_URL:-}
+      TRUSTAI_JUDGE_API_KEY: ${TRUSTAI_JUDGE_API_KEY:-}
+      TRUSTAI_JUDGE_MODEL: ${TRUSTAI_JUDGE_MODEL:-gpt-4o-mini}
+    ports:
+      - "8004:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  governance-worker:
+    build:
+      context: .
+      dockerfile: services/governance/Dockerfile
+    command: ["python", "-m", "app.worker"]
+    # The image's default healthcheck probes the HTTP API, which the worker doesn't serve;
+    # a queue worker is healthy when it can reach Redis.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, redis; redis.Redis.from_url(os.environ['TRUSTAI_REDIS_URL'], socket_timeout=3).ping()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      <<: *common-env
+      TRUSTAI_EVAL_EXECUTOR: redis
+      TRUSTAI_GOVERNANCE_CREATE_TABLES: "false"
+      TRUSTAI_JUDGE_PROVIDER: ${TRUSTAI_JUDGE_PROVIDER:-none}
+      TRUSTAI_JUDGE_BASE_URL: ${TRUSTAI_JUDGE_BASE_URL:-}
+      TRUSTAI_JUDGE_API_KEY: ${TRUSTAI_JUDGE_API_KEY:-}
+      TRUSTAI_JUDGE_MODEL: ${TRUSTAI_JUDGE_MODEL:-gpt-4o-mini}
+    depends_on:
+      governance:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── AI Gateway (OpenAI-compatible, enforces each agent's policies) ──
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    environment:
+      TRUSTAI_ENVIRONMENT: development
+      TRUSTAI_GOVERNANCE_URL: http://governance:8000
+      TRUSTAI_INTERNAL_API_SECRET: ${TRUSTAI_INTERNAL_API_SECRET:-internal-secret-change-me}
+      TRUSTAI_GATEWAY_UPSTREAMS_FILE: /app/upstreams.yaml
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      TRUSTAI_INGEST_URL: http://ingestion:8000
+      TRUSTAI_GATEWAY_INGEST_API_KEY: ${TRUSTAI_GATEWAY_INGEST_API_KEY:-}
+      TRUSTAI_GATEWAY_INGEST_PROJECT_ID: ${TRUSTAI_GATEWAY_INGEST_PROJECT_ID:-}
+    ports:
+      - "8005:8000"
+    depends_on:
+      governance:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Dashboard ────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8002
+        NEXT_PUBLIC_ADMIN_URL: http://localhost:8003
+        NEXT_PUBLIC_INGESTION_URL: http://localhost:8001
+        INTERNAL_API_URL: http://api:8000
+        INTERNAL_ADMIN_URL: http://admin:8000
+        INTERNAL_GOVERNANCE_URL: http://governance:8000
+    environment:
+      # Server-side proxies (/api/backend, /api/admin, /api/governance) must use Docker service
+      # names at runtime; localhost inside the container is the dashboard itself.
+      INTERNAL_API_URL: http://api:8000
+      INTERNAL_ADMIN_URL: http://admin:8000
+      INTERNAL_GOVERNANCE_URL: http://governance:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+      - admin
+      - governance
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  analytics_data:

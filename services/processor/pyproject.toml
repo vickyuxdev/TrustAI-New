@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trustai-processor"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "azure-eventhub>=5.11",
+    "azure-eventhub-checkpointstoreblob-aio>=1.1",
+    "pydantic>=2.0",
+    "structlog>=24.0",
+    "trustai-shared",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

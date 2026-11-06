@@ -1,0 +1,26 @@
+# TrustAI AI Gateway model routes (TRUSTAI_GATEWAY_UPSTREAMS_FILE).
+# Secrets are never written here: `api_key_env` names the environment variable that holds the key.
+
+gpt-4o:
+  provider: azure_openai
+  base_url: ${AZURE_OPENAI_ENDPOINT}        # ${VAR} is expanded from the environment at load time
+  deployment: gpt-4o
+  api_version: "2024-10-21"
+  api_key_env: AZURE_OPENAI_API_KEY
+
+gpt-4o-mini:
+  provider: azure_openai
+  base_url: ${AZURE_OPENAI_ENDPOINT}
+  deployment: gpt-4o-mini
+  api_version: "2024-10-21"
+  api_key_env: AZURE_OPENAI_API_KEY
+
+oss-gpt-oss-120b:
+  provider: openai                          # any OpenAI-compatible API (OpenRouter, LiteLLM, vLLM)
+  base_url: https://openrouter.ai/api/v1
+  model: openai/gpt-oss-120b
+  api_key_env: OPENROUTER_API_KEY
+
+# Development only - deterministic echo model, refused when TRUSTAI_ENVIRONMENT is staging/production.
+trustai-mock:
+  provider: mock

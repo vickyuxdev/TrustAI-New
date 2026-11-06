@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trustai"
+version = "0.2.0"
+description = "TrustAI SDK — GenAI observability and governance (onboarding, risk, guardrails, evaluations, AI gateway) for Python"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+keywords = ["llm", "observability", "tracing", "genai", "opentelemetry"]
+dependencies = [
+    "opentelemetry-api>=1.24",
+    "opentelemetry-sdk>=1.24",
+    "opentelemetry-exporter-otlp-proto-http>=1.24",
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "structlog>=24.0",
+]
+
+[project.optional-dependencies]
+azure = [
+    "azure-monitor-opentelemetry>=1.6",
+    "azure-ai-projects>=1.0.0b7",
+]
+openai = ["openai>=1.30"]
+langchain = ["langchain-core>=0.2"]
+
+[project.scripts]
+trustai = "trustai.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trustai"]

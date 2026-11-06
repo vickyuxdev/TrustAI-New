@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trustai-governance"
+version = "0.1.0"
+description = "TrustAI Governance Service - agent registry, risk assessment, guardrails & policies, red-team evaluations, AI-gateway control, evidence"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "httpx>=0.27",
+    "structlog>=24.0",
+    "redis>=5.0",
+]
+
+[project.optional-dependencies]
+# Azure AD token validation for dashboard users (the shared TrustAI auth package).
+azure-ad = ["trustai-shared"]
+# Microsoft Presidio for richer PII detection (the built-in recognisers work without it).
+presidio = ["presidio-analyzer>=2.2"]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "aiosqlite>=0.20",
+]
+
+[project.scripts]
+trustai-governance-worker = "app.worker:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
