@@ -24,7 +24,7 @@ export default function PoliciesPage() {
     <>
       <PageHead title="Policies & guardrails" sub="Guardrails are bundles of checks (PII, toxicity, jailbreak…). Policies decide which guardrails run, in which phase, and at what severity a request is blocked." />
 
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Guardrail figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Guardrail figures">
         <Kpi icon={ShieldCheck} label="Policies" value={policies.isLoading ? "—" : String(policies.data?.length ?? 0)} foot={`${(policies.data ?? []).filter((p) => p.is_system).length} built-in`} />
         <Kpi icon={ShieldHalf} label="Guardrails" value={guardrails.isLoading ? "—" : String(guardrails.data?.length ?? 0)} foot={`${catalog.data?.length ?? 0} evaluator types available`} />
         <Kpi icon={FlaskConical} label="Checks · 24h" value={ov.isLoading ? "—" : compact(ov.data?.guardrail_checks_24h)} foot="Runtime, red-team and playground" />

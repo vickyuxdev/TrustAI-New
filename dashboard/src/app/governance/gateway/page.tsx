@@ -22,7 +22,7 @@ export default function GatewayPage() {
   return (
     <>
       <PageHead title="AI gateway" sub="Agents that passed the deployment gate get a scoped gateway key. Every call through it runs the agent's policies, and revoking the key cuts access instantly." />
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Gateway figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Gateway figures">
         <Kpi icon={Network} label="Active deployments" value={all.isLoading ? "—" : String(active.length)} foot={(() => { const n = new Set(active.map((d) => d.agent_id)).size; return `${n} ${n === 1 ? "agent" : "agents"} live`; })()} />
         <Kpi icon={Power} label="Revoked" value={all.isLoading ? "—" : String(revoked)} foot="Keys that no longer work" />
         <Kpi icon={Cpu} label="Models served" value={models.isLoading ? "—" : String(models.data?.models.length ?? 0)} foot={(models.data?.models ?? []).slice(0, 3).join(", ") || "—"} />

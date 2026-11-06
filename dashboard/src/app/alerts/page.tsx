@@ -57,7 +57,7 @@ export default function AlertsPage() {
       <PageHead title="Alerts" sub="Fired alerts and the rules that watch spend, error rate and latency."
         actions={<button type="button" className="btn btn-primary" onClick={() => { setForm({ name: "", metric: "cost_usd", operator: "gt", threshold: "", window: "60", severity: "warning", project: "", channels: "" }); setErr(null); setOpen(true); }}><Plus className="ic" aria-hidden />New rule</button>} />
 
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Alert figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Alert figures">
         <Kpi icon={BellRing} label="Active alerts" tone={active.data?.total ? "bad" : undefined} value={active.isLoading ? "—" : String(active.data?.total ?? 0)} foot={active.data?.total ? "Waiting for someone to acknowledge" : "Nothing needs attention"} />
         <Kpi icon={BellRing} label="Critical" tone={crit ? "bad" : undefined} value={active.isLoading ? "—" : String(crit)} foot="Active alerts from critical rules" />
         <Kpi icon={Bell} label="Alert rules" value={rules.isLoading ? "—" : String(ruleList.length)} foot={`${ruleList.filter((r) => r.is_active).length} enabled`} />

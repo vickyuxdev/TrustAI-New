@@ -187,7 +187,7 @@ export default function ConnectorsPage() {
       <PageHead title="Connectors" sub="Pull telemetry from cloud AI services you already run. The SDK is not required for these."
         actions={<button type="button" className="btn btn-primary" onClick={() => { setEditing(null); setOpen(true); }}><Plus className="ic" aria-hidden />Add connector</button>} />
 
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Connector figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Connector figures">
         <Kpi icon={Plug} label="Connectors" value={isLoading ? "—" : String(list.length)} foot={`${list.filter((c) => c.is_active).length} active`} />
         <Kpi icon={CircleCheck} label="Healthy" value={isLoading ? "—" : String(healthy)} foot="Last sync succeeded" />
         <Kpi icon={TriangleAlert} label="Failing" tone={failing ? "bad" : undefined} value={isLoading ? "—" : String(failing)} foot={failing ? "Check credentials and permissions" : "No sync errors"} />

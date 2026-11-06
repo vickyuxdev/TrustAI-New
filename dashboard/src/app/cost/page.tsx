@@ -70,7 +70,7 @@ export default function CostPage() {
 
       {cost.isError ? <Card><ErrorState error={cost.error} onRetry={() => cost.refetch()} /></Card> : (
         <>
-          <section className="kpis" style={{ ["--cols" as string]: 5 } as React.CSSProperties} aria-label="Cost figures">
+          <section className="kpis" data-cols={5} style={{ ["--cols" as string]: 5 } as React.CSSProperties} aria-label="Cost figures">
             <Kpi icon={DollarSign} label="Total spend" value={loading ? <Skel w={90} h={22} /> : usd(total)} vis={<MiniBars values={days.slice(-9).map((x) => x.cost)} />} foot={`${compact(calls)} calls · ${describeTimeRange(spec)}`} />
             <Kpi icon={Receipt} label="Average per day" value={loading ? <Skel w={80} h={22} /> : usd(days.length ? total / days.length : 0)} foot={peak ? `Peak ${peak.label} · ${usd(peak.cost)}` : "No spend yet"} />
             <Kpi icon={Coins} label="Cost per call" value={loading ? <Skel w={80} h={22} /> : usd(calls ? total / calls : 0)} foot="Across every model and agent" />

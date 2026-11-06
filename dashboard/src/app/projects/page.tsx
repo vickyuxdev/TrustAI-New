@@ -30,7 +30,7 @@ export default function ProjectsPage() {
       <PageHead title="Projects" sub="Every AI application sending telemetry to TrustAI. Spend and calls cover the last 30 days."
         actions={<button type="button" className="btn btn-primary" onClick={() => setOpen(true)}><Plus className="ic" aria-hidden />New project</button>} />
 
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Project figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Project figures">
         <Kpi icon={FolderKanban} label="Active projects" value={isLoading ? "—" : compact(data?.total)} foot={`${items.filter((p) => (p.total_calls ?? 0) > 0).length} sent calls in the last 30 days`} />
         <Kpi icon={Wallet} label="Spend · 30 days" value={isLoading ? "—" : usd(spend)} foot="Across all projects" />
         <Kpi icon={Zap} label="AI calls · 30 days" value={isLoading ? "—" : compact(calls)} foot={calls ? `${usd(spend / calls)} per call on average` : "No calls yet"} />

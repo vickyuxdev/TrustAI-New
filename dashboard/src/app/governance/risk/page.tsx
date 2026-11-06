@@ -27,7 +27,7 @@ export default function RiskPage() {
       <PageHead title="Risk assessments" sub={`Questionnaire mapped to ${tpl.data?.frameworks.join(", ") ?? "EU AI Act, NIST AI RMF and ISO/IEC 42001"}. Tiers drive the controls an agent must meet.`}
         actions={<button type="button" className="btn btn-primary" onClick={() => setOpen(true)}><Plus className="ic" aria-hidden />New assessment</button>} />
 
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Assessment figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Assessment figures">
         <Kpi icon={FileClock} label="Drafts" value={all.isLoading ? "—" : String(count("draft") + count("submitted"))} foot="Being filled in" />
         <Kpi icon={Gavel} label="Needs decision" tone={count("classified") ? "wait" : undefined} value={all.isLoading ? "—" : String(count("classified"))} foot="Classified, waiting on a person" />
         <Kpi icon={ClipboardCheck} label="Decided" value={all.isLoading ? "—" : String(decided.length)} foot={`${decided.filter((a) => a.decision === "rejected").length} rejected`} />

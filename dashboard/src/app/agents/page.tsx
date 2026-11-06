@@ -24,7 +24,7 @@ export default function AgentsPage() {
   return (
     <>
       <PageHead title="Agents" sub={`Agents discovered from telemetry in the ${rangePhrase(spec)}. One row per agent and project.`} actions={<TimeRangePicker />} />
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Agent figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Agent figures">
         <Kpi icon={Bot} label="Active agents" value={isLoading ? "—" : compact(items.length)} foot={`${new Set(items.map((a) => a.project_id)).size} projects`} />
         <Kpi icon={DollarSign} label="Agent spend" value={isLoading ? "—" : usd(spend)} foot={`${compact(calls)} agent runs`} />
         <Kpi icon={ShieldCheck} label="Run error rate" tone={calls && errs / calls > 0.05 ? "bad" : undefined} value={isLoading ? "—" : pct(calls ? (errs / calls) * 100 : 0)} foot={`${compact(Math.round(errs))} failed runs`} />

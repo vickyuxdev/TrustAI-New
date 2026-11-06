@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
-  Bell, Bot, ChevronDown, CircleHelp, ClipboardCheck, Coins, DollarSign, FolderKanban, GitBranch, History, KeyRound,
+  Bell, Bot, Building2, ChevronDown, CircleHelp, ClipboardCheck, Coins, DollarSign, FolderKanban, GitBranch, History, KeyRound,
   LayoutGrid, Library, Network, PanelLeft, Plug, ScrollText, ShieldCheck, Swords, type LucideIcon,
 } from "lucide-react";
 import { useActiveAlertCount } from "@/lib/api";
@@ -11,29 +11,28 @@ import { RANGE_PARAMS } from "@/lib/timeRange";
 
 type Item = { label: string; href: string; icon: LucideIcon; exact?: boolean; badge?: "alerts"; live?: boolean };
 const GROUPS: { id: string; label: string; items: Item[] }[] = [
-  { id: "overview", label: "Overview", items: [
-    { label: "Dashboard", href: "/", icon: LayoutGrid, exact: true },
-    { label: "Cost insights", href: "/cost", icon: DollarSign },
-    { label: "Alerts", href: "/alerts", icon: Bell, badge: "alerts" },
-  ] },
   { id: "observe", label: "Observability", items: [
+    { label: "Dashboard", href: "/", icon: LayoutGrid, exact: true },
     { label: "Projects", href: "/projects", icon: FolderKanban },
     { label: "Agents", href: "/agents", icon: Bot },
     { label: "Traces", href: "/traces", icon: GitBranch, live: true },
+    { label: "Clients", href: "/clients", icon: Building2 },
+    { label: "Cost Insights", href: "/cost", icon: DollarSign },
   ] },
   { id: "gov", label: "Governance", items: [
     { label: "Overview", href: "/governance", icon: ShieldCheck, exact: true },
-    { label: "Agent registry", href: "/governance/agents", icon: Library },
-    { label: "Risk assessments", href: "/governance/risk", icon: ClipboardCheck },
-    { label: "Policies & guardrails", href: "/governance/policies", icon: ScrollText },
-    { label: "Red-team", href: "/governance/evaluations", icon: Swords },
-    { label: "AI gateway", href: "/governance/gateway", icon: Network },
-    { label: "Audit events", href: "/governance/events", icon: History },
+    { label: "Agent Registry", href: "/governance/agents", icon: Library },
+    { label: "Risk Assessments", href: "/governance/risk", icon: ClipboardCheck },
+    { label: "Policies & Guardrails", href: "/governance/policies", icon: ScrollText },
+    { label: "Red-Team", href: "/governance/evaluations", icon: Swords },
+    { label: "AI Gateway", href: "/governance/gateway", icon: Network },
+    { label: "Audit Events", href: "/governance/events", icon: History },
   ] },
   { id: "settings", label: "Settings", items: [
+    { label: "Alerts", href: "/alerts", icon: Bell, badge: "alerts" },
     { label: "Connectors", href: "/settings/connectors", icon: Plug },
-    { label: "SDK & API keys", href: "/settings/onboarding", icon: KeyRound },
-    { label: "Model pricing", href: "/settings/pricing", icon: Coins },
+    { label: "SDK & API Keys", href: "/settings/onboarding", icon: KeyRound },
+    { label: "Model Pricing", href: "/settings/pricing", icon: Coins },
   ] },
 ];
 

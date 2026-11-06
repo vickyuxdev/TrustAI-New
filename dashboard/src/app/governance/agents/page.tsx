@@ -30,7 +30,7 @@ export default function RegistryPage() {
       <PageHead title="Agent registry" sub="Every agent the AI factory has built, with its lifecycle stage, risk tier and trust score."
         actions={<button type="button" className="btn btn-primary" onClick={() => setOpen(true)}><Plus className="ic" aria-hidden />Onboard agent</button>} />
 
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Registry figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Registry figures">
         <Kpi icon={Library} label="Registered agents" value={ov.isLoading ? "—" : compact(o?.agents_total)} foot={`${(o?.agents_by_status.registered ?? 0) + (o?.agents_by_status.onboarded ?? 0)} still being onboarded`} />
         <Kpi icon={ShieldCheck} label="Cleared for production" value={ov.isLoading ? "—" : String(live)} foot={`${o?.agents_by_status.deployed ?? 0} deployed · ${o?.agents_by_status.approved ?? 0} approved`} />
         <Kpi icon={Wrench} label="In review" value={ov.isLoading ? "—" : String((o?.agents_by_status.assessed ?? 0) + (o?.agents_by_status.evaluated ?? 0))} foot="Assessed or red-teamed, not yet approved" />

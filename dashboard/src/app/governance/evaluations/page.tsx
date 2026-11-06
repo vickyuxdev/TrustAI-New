@@ -30,7 +30,7 @@ export default function EvaluationsPage() {
           <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}><Swords className="ic" aria-hidden />New run</button>
         </>} />
 
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Red-team figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Red-team figures">
         <Kpi icon={Swords} label="Runs" value={all.isLoading ? "—" : String(all.data?.length ?? 0)} foot={`${(all.data ?? []).filter((e) => e.status === "running" || e.status === "queued").length} in progress`} />
         <Kpi icon={Gauge} label="Average trust score" value={avg != null ? avg.toFixed(1) : "—"} foot={`Across ${done.length} completed runs`} />
         <Kpi icon={Target} label="Met the pass mark" value={all.isLoading ? "—" : `${passing} of ${done.length}`} foot="Runs at or above their threshold" />

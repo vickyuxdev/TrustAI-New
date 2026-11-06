@@ -45,7 +45,7 @@ export default function ProjectPage() {
         </>}
       />
 
-      <section className="kpis" style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Project figures">
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Project figures">
         <Kpi icon={DollarSign} label="Spend" value={cost.isLoading ? <Skel w={80} h={22} /> : usd(total)} vis={<MiniBars values={days.slice(-9).map((d) => d.cost)} />} foot={describeTimeRange(spec)} />
         <Kpi icon={Zap} label="AI calls" value={cost.isLoading ? <Skel w={60} h={22} /> : compact(calls)} vis={<MiniBars values={days.slice(-9).map((d) => d.calls)} />} foot={calls ? `${usd(total / calls)} per call` : "No calls in this period"} />
         <Kpi icon={Wallet} label="Monthly budget" tone={budgetUse != null && budgetUse > 1 ? "bad" : budgetUse != null && budgetUse > 0.8 ? "wait" : undefined}

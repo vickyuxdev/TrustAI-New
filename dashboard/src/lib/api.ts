@@ -48,6 +48,21 @@ export interface CostBreakdown {
   top_projects: TopProject[];
 }
 
+export type ClientType = "external" | "internal";
+export interface Client {
+  id: string;
+  name: string;
+  slug: string;
+  client_type: ClientType;
+  description: string | null;
+  is_active: boolean;
+  monthly_budget_usd: number | null;
+  created_at: string;
+  total_cost_usd: number | null;
+  total_calls: number | null;
+  active_projects: number | null;
+}
+
 export type CaptureMode = "full" | "masked" | "disabled";
 export interface Project {
   id: string;
@@ -443,4 +458,28 @@ export function useSeedPricing() {
 export function useDeactivatePricing() {
   const inv = useInvalidate();
   return useMutation<null, ApiError, string>({ mutationFn: (id) => admin(`pricing/models/${id}`, { method: "DELETE" }), onSuccess: () => inv("pricing") });
+}
+
+// ─── Clients ─────────────────────────────────────────────────────────────
+
+/** Clients with spend, calls and project count for the last `periodDays` (analytics API). */
+export const useClients = (periodDays = 30) =>
+  useQuery<Paginated<Client>, ApiError>({ queryKey: ["clients", periodDays], queryFn: () => api(`clients${qs({ page_size: 100, period_days: periodDays })}`), retry });
+
+export interface ClientInput { name: string; slug: string; client_type: ClientType; description?: string | null; monthly_budget_usd?: number | null }
+/** Create a client (admin service). */
+export function useCreateClient() {
+  const qc = useQueryClient();
+  return useMutation<Client, ApiError, ClientInput>({
+    mutationFn: (body) => admin("clients", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
+  });
+}
+/** Update a client's name, description, budget or active flag (admin service). */
+export function useUpdateClient(id: string) {
+  const qc = useQueryClient();
+  return useMutation<Client, ApiError, Partial<Omit<ClientInput, "slug" | "client_type">> & { is_active?: boolean }>({
+    mutationFn: (body) => admin(`clients/${id}`, { method: "PATCH", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
+  });
 }
