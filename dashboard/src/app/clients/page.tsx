@@ -46,7 +46,11 @@ export default function ClientsPage() {
   const ranked = useMemo(() => [...items].sort((a, b) => (b.total_cost_usd ?? 0) - (a.total_cost_usd ?? 0)), [items]);
   const range = useMemo(() => resolveTimeRange(SPEC30), []);
   const days = useMemo(() => fillDays(all.data?.time_series ?? [], range.from, range.to), [all.data, range]);
-  const colorOf = (id: string) => SERIES[ranked.findIndex((c) => c.id === id) % SERIES.length] ?? "var(--c5)";
+  const TOP = 4;
+  const topClients = ranked.slice(0, TOP);
+  const otherSpend = ranked.slice(TOP).reduce((a, c) => a + (c.total_cost_usd ?? 0), 0);
+  const donut = [...topClients.map((c, i) => ({ id: c.id, name: c.name, value: c.total_cost_usd ?? 0, color: SERIES[i] })),
+    ...(otherSpend > 0 ? [{ id: "other", name: `Other · ${ranked.length - TOP} clients`, value: otherSpend, color: "var(--c5)" }] : [])];
 
   const spend = items.reduce((a, c) => a + (c.total_cost_usd ?? 0), 0);
   const calls = items.reduce((a, c) => a + (c.total_calls ?? 0), 0);
@@ -55,6 +59,7 @@ export default function ClientsPage() {
   items.forEach((c) => counts[budgetTone(c)]++);
   const projectsOf = (id: string) => (projects.data?.items ?? []).filter((p) => p.client_id === id);
   const list = ranked.filter((c) => (type === "all" || c.client_type === type) && `${c.name} ${c.slug} ${c.description ?? ""}`.toLowerCase().includes(q.toLowerCase()));
+  const watchList = items.filter((c) => ["over", "near"].includes(budgetTone(c))).sort((a, b) => (b.total_cost_usd ?? 0) / (b.monthly_budget_usd || 1) - (a.total_cost_usd ?? 0) / (a.monthly_budget_usd || 1));
   const extSpend = ext.reduce((a, c) => a + (c.total_cost_usd ?? 0), 0);
 
   return (
@@ -111,7 +116,7 @@ export default function ClientsPage() {
                         <td>
                           <div className="ag-metric" style={{ minWidth: 170, maxWidth: 220 }}>
                             <span className="ag-v"><b className="num">{usd(cs)}</b><small>{share(spend ? cs / spend : 0)} of spend</small></span>
-                            <span className="ag-bar"><i style={{ width: `${(cs / (ranked[0]?.total_cost_usd || 1)) * 100}%`, background: colorOf(c.id) }} /></span>
+                            <span className="ag-bar"><i style={{ width: `${(cs / (ranked[0]?.total_cost_usd || 1)) * 100}%`, background: "var(--accent)" }} /></span>
                           </div>
                         </td>
                         <td className="r"><b className="num">{compact(c.total_calls ?? 0)}</b><div className="sub">{c.total_calls ? `${usd(cs / c.total_calls)} / call` : "—"}</div></td>
@@ -134,20 +139,21 @@ export default function ClientsPage() {
         </div>
       </Card>
 
+      <div className="stack">
       <Card labelledBy="t-mix">
         <CardHeader id="t-mix" title="Where spend goes" sub="Share of spend · last 30 days" />
         <div className="cl-donut">
           {isLoading ? <Skel w={132} h={132} /> : (
-            <Ring size={132} stroke={13} ariaLabel={`Spend by client: ${ranked.map((c) => `${c.name} ${share(spend ? (c.total_cost_usd ?? 0) / spend : 0)}`).join(", ")}`}
-              slices={ranked.map((c) => ({ name: c.name, value: c.total_cost_usd ?? 0, color: colorOf(c.id) }))}
+            <Ring size={132} stroke={13} ariaLabel={`Spend by client: ${donut.map((d) => `${d.name} ${share(spend ? d.value / spend : 0)}`).join(", ")}`}
+              slices={donut.map((d) => ({ name: d.name, value: d.value, color: d.color }))}
               center={<span className="cl-dc"><b className="num">{usdShort(spend)}</b><span>total</span></span>} />
           )}
           <ul className="cl-leg">
-            {ranked.map((c) => (
-              <li key={c.id}>
-                <i style={{ background: colorOf(c.id) }} aria-hidden />
-                <span className="n">{c.name}<small>{usd(c.total_cost_usd ?? 0)}</small></span>
-                <b className="num">{share(spend ? (c.total_cost_usd ?? 0) / spend : 0)}</b>
+            {donut.map((d) => (
+              <li key={d.id}>
+                <i style={{ background: d.color }} aria-hidden />
+                <span className="n">{d.name}<small>{usd(d.value)}</small></span>
+                <b className="num">{share(spend ? d.value / spend : 0)}</b>
               </li>
             ))}
           </ul>
@@ -158,6 +164,28 @@ export default function ClientsPage() {
           <div className="row" style={{ justifyContent: "space-between" }}><b>{share(spend ? extSpend / spend : 0)}</b><b>{share(spend ? (spend - extSpend) / spend : 0)}</b></div>
         </div>
       </Card>
+      <Card labelledBy="t-watch">
+        <CardHeader id="t-watch" title="Budget watch" sub={watchList.length ? "Clients over or close to their monthly budget" : "Every client is within budget"} />
+        {!watchList.length ? (
+          <div className="card-b"><span className="ag-health ok" style={{ alignSelf: "flex-start" }}><i aria-hidden />All clients on track</span></div>
+        ) : (
+          <ul className="cl-watch">
+            {watchList.map((c) => {
+              const t = budgetTone(c), f = (c.total_cost_usd ?? 0) / (c.monthly_budget_usd || 1);
+              return (
+                <li key={c.id}>
+                  <button type="button" onClick={() => setSel(c)}>
+                    <span className="n"><b>{c.name}</b><small>{usd(c.total_cost_usd ?? 0)} of {usd(c.monthly_budget_usd ?? 0)}</small></span>
+                    <span className={`ag-health ${TONE[t].cls}`}><i aria-hidden />{Math.round(f * 100)}%</span>
+                    <span className="ag-bar"><i style={{ width: `${Math.min(1, f) * 100}%`, background: TONE[t].color }} /></span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+      </div>
       </div>
 
       <Drawer open={!!sel} onClose={() => setSel(null)} title={sel?.name ?? ""} sub={sel ? `${TYPE_LABEL[sel.client_type]} · since ${day(sel.created_at)}` : undefined}
