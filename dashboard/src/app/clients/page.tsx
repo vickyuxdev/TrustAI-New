@@ -2,9 +2,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Building2, ChevronRight, Pencil, Plus, Search, Wallet, Zap } from "lucide-react";
-import { MiniBars, Ring, SERIES, Segments, Sparkline, StackedBars } from "@/components/charts";
+import { MiniBars, Ring, SERIES, Segments, Sparkline } from "@/components/charts";
 import { Card, CardHeader, Delta, Drawer, Empty, ErrorState, Kpi, Modal, PageHead, Pill, Seg, Skel, SkelRows, errMsg, useToast } from "@/components/ui";
-import { useClients, useCostBreakdown, useCostBreakdowns, useCreateClient, useOverviewMetrics, useProjects, useUpdateClient, type Client, type ClientType } from "@/lib/api";
+import { useClients, useCostBreakdown, useCreateClient, useOverviewMetrics, useProjects, useUpdateClient, type Client, type ClientType } from "@/lib/api";
 import { compact, day, share, usd, usdShort } from "@/lib/format";
 import { fillDays } from "@/lib/series";
 import { resolveTimeRange, timeRangeKey, type TimeRangeSpec } from "@/lib/timeRange";
@@ -44,10 +44,8 @@ export default function ClientsPage() {
   const [form, setForm] = useState<{ open: boolean; client?: Client }>({ open: false });
   const items = useMemo(() => data?.items ?? [], [data]);
   const ranked = useMemo(() => [...items].sort((a, b) => (b.total_cost_usd ?? 0) - (a.total_cost_usd ?? 0)), [items]);
-  const perClient = useCostBreakdowns(SPEC30, KEY30, ranked.map((c) => ({ client_id: c.id })));
   const range = useMemo(() => resolveTimeRange(SPEC30), []);
   const days = useMemo(() => fillDays(all.data?.time_series ?? [], range.from, range.to), [all.data, range]);
-  const clientDays = ranked.map((_, i) => fillDays(perClient[i]?.data?.time_series ?? [], range.from, range.to));
   const colorOf = (id: string) => SERIES[ranked.findIndex((c) => c.id === id) % SERIES.length] ?? "var(--c5)";
 
   const spend = items.reduce((a, c) => a + (c.total_cost_usd ?? 0), 0);
@@ -80,6 +78,7 @@ export default function ClientsPage() {
           foot={`${counts.near} near limit · ${counts.ok} on track · ${counts.none} no budget`} />
       </section>
 
+      <div className="split-wide cl-split">
       <Card labelledBy="t-cl">
         <CardHeader id="t-cl" title="All clients" sub={`${list.length} of ${items.length} · click a client to see its projects`}
           action={<div className="filterbar">
@@ -95,10 +94,9 @@ export default function ClientsPage() {
           ) : (
             <div className="scroll-x">
               <table className="cl-table">
-                <thead><tr><th>Client</th><th>Projects</th><th>Spend · 30 days</th><th>Trend</th><th className="r">AI calls</th><th>Monthly budget</th><th className="r">Client since</th><th aria-label="Open" /></tr></thead>
+                <thead><tr><th>Client</th><th>Spend · 30 days</th><th className="r">AI calls</th><th>Monthly budget</th><th aria-label="Open" /></tr></thead>
                 <tbody>
                   {list.map((c) => {
-                    const i = ranked.findIndex((x) => x.id === c.id);
                     const ps = projectsOf(c.id);
                     const t = budgetTone(c);
                     const cs = c.total_cost_usd ?? 0;
@@ -107,17 +105,15 @@ export default function ClientsPage() {
                         <td>
                           <div className="cell-main">
                             <span className="cl-mono" aria-hidden>{initials(c.name)}</span>
-                            <div style={{ minWidth: 0 }}><b>{c.name}</b><small className="cl-desc">{TYPE_LABEL[c.client_type]}{c.description ? ` · ${c.description}` : ""}</small></div>
+                            <div style={{ minWidth: 0 }}><b>{c.name}</b><small className="cl-desc">{TYPE_LABEL[c.client_type]} · {ps.length || c.active_projects || 0} {(ps.length || c.active_projects) === 1 ? "project" : "projects"}</small></div>
                           </div>
                         </td>
-                        <td><b className="num">{ps.length || c.active_projects || 0}</b><div className="sub cl-proj" title={ps.map((p) => p.name).join(", ")}>{ps.map((p) => p.name).join(", ") || "—"}</div></td>
                         <td>
                           <div className="ag-metric" style={{ minWidth: 170, maxWidth: 220 }}>
                             <span className="ag-v"><b className="num">{usd(cs)}</b><small>{share(spend ? cs / spend : 0)} of spend</small></span>
                             <span className="ag-bar"><i style={{ width: `${(cs / (ranked[0]?.total_cost_usd || 1)) * 100}%`, background: colorOf(c.id) }} /></span>
                           </div>
                         </td>
-                        <td>{perClient[i]?.isLoading ? <Skel w={96} h={24} /> : <Sparkline values={clientDays[i].map((d) => d.cost)} width={96} height={26} color={colorOf(c.id)} />}</td>
                         <td className="r"><b className="num">{compact(c.total_calls ?? 0)}</b><div className="sub">{c.total_calls ? `${usd(cs / c.total_calls)} / call` : "—"}</div></td>
                         <td>
                           {c.monthly_budget_usd ? (
@@ -127,7 +123,6 @@ export default function ClientsPage() {
                             </div>
                           ) : <span className="ag-health idle"><i aria-hidden />No budget</span>}
                         </td>
-                        <td className="r muted">{day(c.created_at)}</td>
                         <td className="r"><ChevronRight className="ic cl-go" aria-hidden /></td>
                       </tr>
                     );
@@ -140,40 +135,30 @@ export default function ClientsPage() {
       </Card>
 
       <Card labelledBy="t-mix">
-        <CardHeader id="t-mix" title="Where spend goes" sub={`Daily spend by client · ${usd(spend)} over the last 30 days`} />
-        <div className="cl-mix">
-          <div className="cl-chart">
-            {all.isLoading || perClient.some((r) => r.isLoading) ? <Skel h={240} /> : (
-              <StackedBars height={240} ariaLabel="Daily spend by client" labels={days.map((d) => d.label)} longs={days.map((d) => d.long)}
-                series={ranked.map((c, i) => ({ name: c.name, color: colorOf(c.id), values: clientDays[i].map((d) => d.cost) }))} fmt={(v) => usd(v)} fmtAxis={usdShort} />
-            )}
-          </div>
-          <div className="cl-side">
-            <section>
-              <h3>By client</h3>
-              <ul className="cl-rank">
-                {ranked.map((c) => (
-                  <li key={c.id}>
-                    <i style={{ background: colorOf(c.id) }} aria-hidden />
-                    <span className="n">{c.name}</span>
-                    <span className="bar-track" aria-hidden><i style={{ width: `${spend ? ((c.total_cost_usd ?? 0) / spend) * 100 : 0}%`, background: colorOf(c.id) }} /></span>
-                    <b className="num">{share(spend ? (c.total_cost_usd ?? 0) / spend : 0)}</b>
-                    <span className="v num">{usd(c.total_cost_usd ?? 0)}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-            <section>
-              <h3>By client type</h3>
-              <Segments ariaLabel="Spend by client type" parts={[{ value: extSpend, color: "var(--s1)", label: "External" }, { value: spend - extSpend, color: "var(--s3)", label: "Internal" }]} />
-              <ul className="seg-legend" style={{ marginTop: 8 }}>
-                <li><i style={{ background: "var(--s1)" }} />External customers <b>{share(spend ? extSpend / spend : 0)}</b>&nbsp;· {usd(extSpend)}</li>
-                <li><i style={{ background: "var(--s3)" }} />Internal teams <b>{share(spend ? (spend - extSpend) / spend : 0)}</b>&nbsp;· {usd(spend - extSpend)}</li>
-              </ul>
-            </section>
-          </div>
+        <CardHeader id="t-mix" title="Where spend goes" sub="Share of spend · last 30 days" />
+        <div className="cl-donut">
+          {isLoading ? <Skel w={132} h={132} /> : (
+            <Ring size={132} stroke={13} ariaLabel={`Spend by client: ${ranked.map((c) => `${c.name} ${share(spend ? (c.total_cost_usd ?? 0) / spend : 0)}`).join(", ")}`}
+              slices={ranked.map((c) => ({ name: c.name, value: c.total_cost_usd ?? 0, color: colorOf(c.id) }))}
+              center={<span className="cl-dc"><b className="num">{usdShort(spend)}</b><span>total</span></span>} />
+          )}
+          <ul className="cl-leg">
+            {ranked.map((c) => (
+              <li key={c.id}>
+                <i style={{ background: colorOf(c.id) }} aria-hidden />
+                <span className="n">{c.name}<small>{usd(c.total_cost_usd ?? 0)}</small></span>
+                <b className="num">{share(spend ? (c.total_cost_usd ?? 0) / spend : 0)}</b>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="cl-type">
+          <div className="row" style={{ justifyContent: "space-between" }}><span>External customers</span><span>Internal teams</span></div>
+          <Segments ariaLabel="Spend by client type" parts={[{ value: extSpend, color: "var(--s1)", label: "External" }, { value: spend - extSpend, color: "var(--s3)", label: "Internal" }]} />
+          <div className="row" style={{ justifyContent: "space-between" }}><b>{share(spend ? extSpend / spend : 0)}</b><b>{share(spend ? (spend - extSpend) / spend : 0)}</b></div>
         </div>
       </Card>
+      </div>
 
       <Drawer open={!!sel} onClose={() => setSel(null)} title={sel?.name ?? ""} sub={sel ? `${TYPE_LABEL[sel.client_type]} · since ${day(sel.created_at)}` : undefined}
         actions={sel && <button type="button" className="btn btn-sm" onClick={() => setForm({ open: true, client: sel })}><Pencil className="ic" aria-hidden />Edit</button>}>
