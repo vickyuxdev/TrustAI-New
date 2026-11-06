@@ -686,3 +686,25 @@ tr:hover .ag-open { background: var(--accent-soft); color: var(--accent-text); }
 .ag-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .ag-legend i { width: 7px; height: 7px; border-radius: 50%; }
 .ag-legend i.ok { background: var(--accent); } .ag-legend i.wait { background: var(--wait); } .ag-legend i.bad { background: var(--danger); } .ag-legend i.idle { background: var(--text-3); }
+
+/* ── Traces table ── */
+.card-s { margin: 2px 0 0; font-size: 12px; color: var(--text-3); }
+.tr-kind { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; border: 1px solid transparent; }
+.tr-kind .ic { width: 15px; height: 15px; }
+.tr-kind.agent { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-line); }
+.tr-kind.llm { background: color-mix(in srgb, var(--c2) 10%, var(--panel)); color: var(--c2); border-color: color-mix(in srgb, var(--c2) 22%, transparent); }
+.tr-kind.tool { background: var(--hover); color: var(--text-2); border-color: var(--line); }
+.tr-name { display: inline-flex; align-items: center; gap: 8px; max-width: 340px; }
+.tr-model { font-size: 11px; font-weight: 500; color: var(--text-2); padding: 1px 7px; border-radius: 6px; background: var(--hover); border: 1px solid var(--line-soft); }
+.tr-table .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.tr-proj { font-weight: 500; color: var(--text); }
+.tr-tok { display: flex; flex-direction: column; gap: 5px; min-width: 120px; max-width: 160px; }
+.tr-tok > span:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tr-tok b { font-weight: 600; } .tr-tok small { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.tr-split { display: flex; gap: 2px; height: 4px; border-radius: 2px; overflow: hidden; background: var(--hover); }
+.tr-split i { display: block; height: 100%; } .tr-split i:first-child { background: var(--accent); } .tr-split i:last-child { background: var(--accent-line); }
+.tr-when { font-weight: 500; color: var(--text); white-space: nowrap; }
+tbody tr.tr-fail td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+tbody tr.tr-fail td { background: color-mix(in srgb, var(--danger) 3%, var(--panel)); }
+.ag-legend i.llm { background: var(--c2); } .ag-legend i.tool { background: var(--text-3); }
+.tr-hist { display: flex; align-items: flex-end; }
