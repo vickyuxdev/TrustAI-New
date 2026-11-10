@@ -11,6 +11,11 @@ import { ago, compact, humanize } from "@/lib/format";
 const BAR = 95;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const PATH: LifecycleStatus[] = ["registered", "onboarded", "assessed", "evaluated", "approved", "deployed"];
+const STAGE_COLOR: Record<string, string> = {
+  registered: "var(--line-2)", onboarded: "color-mix(in srgb, var(--accent) 22%, var(--panel))", assessed: "color-mix(in srgb, var(--accent) 38%, var(--panel))",
+  evaluated: "color-mix(in srgb, var(--accent) 55%, var(--panel))", approved: "color-mix(in srgb, var(--accent) 75%, var(--panel))", deployed: "var(--accent)",
+  suspended: "var(--danger)", retired: "var(--text-3)",
+};
 
 /** Horizontal meter with a tick at the 95 release bar. */
 function TrustMeter({ score, width = 88, bare }: { score: number | null; width?: number; bare?: boolean }) {
@@ -79,23 +84,20 @@ export default function GovernancePage() {
       )}
 
       <Card labelledBy="t-life">
-        <CardHeader id="t-life" title="Lifecycle" sub="Agents at each stage on the way to production" action={<MoreLink href="/governance/agents">Agent registry</MoreLink>} />
-        <div className="gv-life">
-          {PATH.map((s, i) => {
-            const list = by(s);
-            return (
-              <div key={s} className={list.length ? "on" : ""}>
-                <span className="gv-l-lbl"><span className="gv-l-step">{i + 1}</span>{LIFE_LABEL[s]}</span>
-                <b className="num">{agentsQ.isLoading ? "—" : list.length}</b>
-                <span className="gv-l-names" title={list.map((a) => a.name).join(", ")}>{list.length ? list.map((a) => a.name).join(", ") : "None"}</span>
-              </div>
-            );
-          })}
-          <div className={`gv-l-off${blocked ? " on" : ""}`}>
-            <span className="gv-l-lbl">Suspended or retired</span>
-            <b className="num">{agentsQ.isLoading ? "—" : blocked}</b>
-            <span className="gv-l-names">{[...by("suspended"), ...by("retired")].map((a) => a.name).join(", ") || "None"}</span>
+        <CardHeader id="t-life" title="Lifecycle" sub={`${agents.length} agents by stage, from registration to production`} action={<MoreLink href="/governance/agents">Agent registry</MoreLink>} />
+        <div className="gv-dist">
+          <div className="gv-bar" role="img" aria-label={[...PATH, "suspended" as LifecycleStatus].map((st) => `${LIFE_LABEL[st]} ${by(st).length}`).join(", ")}>
+            {[...PATH, "suspended" as LifecycleStatus, "retired" as LifecycleStatus].map((st) => by(st).length ? <i key={st} style={{ flex: `${by(st).length} 1 0`, background: STAGE_COLOR[st] }} title={`${LIFE_LABEL[st]}: ${by(st).map((x) => x.name).join(", ")}`} /> : null)}
           </div>
+          <ul className="gv-legend">
+            {[...PATH, "suspended" as LifecycleStatus].map((st) => (
+              <li key={st} className={by(st).length ? "" : "zero"} title={by(st).map((x) => x.name).join(", ") || undefined}>
+                <i style={{ background: STAGE_COLOR[st] }} aria-hidden />
+                <span>{LIFE_LABEL[st]}</span>
+                <b className="num">{agentsQ.isLoading ? "—" : by(st).length}</b>
+              </li>
+            ))}
+          </ul>
         </div>
       </Card>
 
