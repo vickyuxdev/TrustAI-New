@@ -471,3 +471,70 @@ export function Gauge({ used, projected, size = 210, center }: { used: number; p
     </div>
   );
 }
+
+// ─── Range trend: average line inside a min–max band, with a reference line ──
+
+export function RangeTrend({ labels, longs, avg, lo, hi, refValue, refLabel, yMin, yMax, step = 10, fmt, extra, ariaLabel }: {
+  labels: string[]; longs?: string[]; avg: number[]; lo: number[]; hi: number[]; refValue?: number; refLabel?: string;
+  yMin: number; yMax: number; step?: number; fmt: (v: number) => string; extra?: TipRow[][]; ariaLabel: string;
+}) {
+  const [ref, { w, h }] = useSize<HTMLDivElement>();
+  const [tip, setTip] = useState<TipState>(null);
+  const [hot, setHot] = useState<number | null>(null);
+  const gid = useId().replace(/:/g, "");
+  const n = avg.length;
+  const m = { l: 34, r: 14, t: 14, b: 24 };
+  const pw = Math.max(0, w - m.l - m.r), ph = Math.max(0, h - m.t - m.b);
+  const x = (i: number) => m.l + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
+  const y = (v: number) => m.t + ph - ((Math.max(yMin, Math.min(yMax, v)) - yMin) / (yMax - yMin)) * ph;
+  const ticks: number[] = [];
+  for (let v = yMin; v <= yMax + 1e-9; v += step) ticks.push(v);
+  const P = (vals: number[]) => vals.map((v, i) => [x(i), y(v)] as [number, number]);
+  const band = n > 1 ? `${smooth(P(hi))} ${smooth(P(lo).reverse()).replace(/^M/, "L")} Z` : "";
+  const line = smooth(P(avg));
+  const area = `${line} L${x(n - 1)} ${m.t + ph} L${x(0)} ${m.t + ph} Z`;
+  const col = n > 1 ? pw / (n - 1) : pw;
+  const skip = every(n, pw, 64);
+  return (
+    <div className="chart" ref={ref} style={{ height: "100%", minHeight: 160 }}>
+      {w > 0 && h > 0 && (
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={ariaLabel} onMouseLeave={() => { setTip(null); setHot(null); }}>
+          <defs>
+            <linearGradient id={`rt${gid}`} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stopColor="var(--accent)" stopOpacity=".16" /><stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {ticks.map((v) => (
+            <g key={v}>
+              <line x1={m.l} x2={w - m.r} y1={Math.round(y(v)) + 0.5} y2={Math.round(y(v)) + 0.5} className={v === yMin ? "bl" : "gl"} />
+              <text x={m.l - 10} y={y(v) + 3.5} textAnchor="end" className="ax">{v}</text>
+            </g>
+          ))}
+          <path d={area} fill={`url(#rt${gid})`} />
+          {band && <path d={band} fill="var(--accent)" opacity=".1" />}
+          {n > 1 && <path d={smooth(P(hi))} fill="none" stroke="var(--accent-line)" strokeWidth={1} />}
+          {n > 1 && <path d={smooth(P(lo))} fill="none" stroke="var(--accent-line)" strokeWidth={1} />}
+          {refValue != null && (
+            <g>
+              <line x1={m.l} x2={w - m.r} y1={y(refValue)} y2={y(refValue)} stroke="var(--danger)" strokeWidth={1.25} strokeDasharray="4 4" opacity=".75" />
+              {refLabel && <text x={w - m.r} y={y(refValue) - 6} textAnchor="end" className="ax ref">{refLabel}</text>}
+            </g>
+          )}
+          <path d={line} fill="none" stroke="var(--accent)" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
+          {hot != null && <line x1={x(hot)} x2={x(hot)} y1={m.t} y2={m.t + ph} stroke="var(--line-2)" strokeWidth={1} />}
+          {avg.map((v, i) => (
+            <circle key={i} cx={x(i)} cy={y(v)} r={i === n - 1 || i === hot ? 4.5 : 0} fill="var(--accent)" stroke="var(--panel)" strokeWidth={2} />
+          ))}
+          {labels.map((lab, i) => (
+            <g key={i}>
+              <rect x={x(i) - col / 2} y={m.t} width={col} height={ph} fill="transparent"
+                onMouseEnter={() => { setHot(i); setTip({ x: x(i), y: y(hi[i]), title: longs?.[i] ?? lab, rows: [{ name: "Average", value: fmt(avg[i]), color: "var(--accent)" }, { name: "Highest", value: fmt(hi[i]) }, { name: "Lowest", value: fmt(lo[i]) }, ...(extra?.[i] ?? [])] }); }} />
+              {(i === n - 1 || (i % skip === 0 && n - 1 - i >= skip)) && <text x={x(i)} y={h - 6} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} className="ax">{lab}</text>}
+            </g>
+          ))}
+        </svg>
+      )}
+      <Tip tip={tip} width={w} />
+    </div>
+  );
+}

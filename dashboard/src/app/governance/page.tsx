@@ -1,18 +1,16 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ClipboardCheck, Library, ShieldCheck, TriangleAlert } from "lucide-react";
-import { CheckRing, Ring, StackedBars } from "@/components/charts";
+import { ArrowDownRight, ArrowUpRight, ClipboardCheck, Library, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CheckRing, RangeTrend, Ring, Sparkline, StackedBars } from "@/components/charts";
 import { LIFE_LABEL, TIER_LABEL } from "@/components/gov";
 import { Card, CardHeader, Empty, ErrorState, Kpi, MoreLink, PageHead, Skel, SkelRows } from "@/components/ui";
 import { useAgents, useAssessments, useEvaluations, useEvents, useOverview, type LifecycleStatus } from "@/lib/governance";
 import { ago, compact, humanize } from "@/lib/format";
 
 const BAR = 95;
-const STAGES: LifecycleStatus[] = ["registered", "onboarded", "assessed", "evaluated", "approved", "deployed", "suspended"];
 // Risk tiers use the brand's evergreen ramp (light → dark = low → high); red is kept for the critical tier only.
 const TIER_COLOR: Record<number, string> = { 1: "var(--g1)", 2: "var(--g2)", 3: "var(--g3)", 4: "var(--danger)" };
-const pass = (v: number) => (v >= BAR ? "var(--accent)" : "var(--danger)");
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const dayFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const longFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -22,6 +20,12 @@ function TrustMeter({ score }: { score: number }) {
   const f = Math.max(0, Math.min(1, (score - 50) / 50));
   const c = score >= BAR ? "var(--accent)" : "var(--wait)";
   return <span className="gv-track" style={{ width: 88 }} aria-hidden><i style={{ width: `${f * 100}%`, background: c }} /><em style={{ left: `${((BAR - 50) / 50) * 100}%` }} /></span>;
+}
+
+/** Change indicator: green up, red down. */
+function Delta({ v, small }: { v: number; small?: boolean }) {
+  const up = v >= 0, Icon = up ? ArrowUpRight : ArrowDownRight;
+  return <span className={`gv-delta ${up ? "up" : "down"}${small ? " sm" : ""}`}><Icon aria-hidden />{Math.abs(v).toFixed(1)}</span>;
 }
 
 export default function GovernancePage() {
@@ -43,7 +47,6 @@ export default function GovernancePage() {
   const running = (evals.data ?? []).filter((e) => e.status === "running" || e.status === "queued");
   const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? "Agent";
   const tiers = [1, 2, 3, 4].map((t) => ({ t, n: agents.filter((a) => a.risk_tier === t).length }));
-  const [hot, setHot] = useState<number | null>(null);
   const assessed = tiers.reduce((a, x) => a + x.n, 0);
 
   // Governance events per day for the last 14 days, split by severity.
@@ -60,14 +63,46 @@ export default function GovernancePage() {
   }, [events.data]);
   const evTotal = evDays.reduce((a, d) => a + d.high + d.med + d.info, 0);
   const evHigh = evDays.reduce((a, d) => a + d.high, 0);
-  const evMed = evDays.reduce((a, d) => a + d.med, 0);
 
-  // Red-team block rate by attack category across completed runs.
+  const done = useMemo(() => (evals.data ?? []).filter((e) => e.status === "completed" && e.trust_score != null)
+    .sort((a, b) => +new Date(b.finished_at ?? b.created_at) - +new Date(a.finished_at ?? a.created_at)), [evals.data]);
+  const latest = useMemo(() => { const seen = new Set<string>(); return done.filter((e) => (seen.has(e.agent_id) ? false : (seen.add(e.agent_id), true))); }, [done]);
+
+  // Weekly trust picture: each agent's latest score as of each week's end.
+  const WEEKS = 8;
+  const [now] = useState(() => Date.now());
+  const trend = useMemo(() => {
+    const DAY = 864e5;
+    const ends = Array.from({ length: WEEKS }, (_, k) => now - (WEEKS - 1 - k) * 7 * DAY);
+    const perAgent: Record<string, number[]> = {};
+    const pts = ends.map((end) => {
+      const seen = new Set<string>(); const vals: number[] = [];
+      done.forEach((e) => { if (seen.has(e.agent_id) || +new Date(e.finished_at ?? e.created_at) > end) return; seen.add(e.agent_id); vals.push(e.trust_score as number); });
+      return vals;
+    });
+    latest.forEach((l) => { perAgent[l.agent_id] = ends.map((end) => done.find((e) => e.agent_id === l.agent_id && +new Date(e.finished_at ?? e.created_at) <= end)?.trust_score ?? NaN); });
+    return {
+      labels: ends.map((t, k) => (k === WEEKS - 1 ? "Now" : dayFmt.format(new Date(t)))),
+      longs: ends.map((t, k) => (k === WEEKS - 1 ? "This week" : `Week to ${dayFmt.format(new Date(t))}`)),
+      avg: pts.map((v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN)),
+      lo: pts.map((v) => (v.length ? Math.min(...v) : NaN)), hi: pts.map((v) => (v.length ? Math.max(...v) : NaN)),
+      passing: pts.map((v) => v.filter((x) => x >= BAR).length), counts: pts.map((v) => v.length), perAgent,
+    };
+  }, [done, latest, now]);
+  const rank = latest.map((e) => {
+    const a = agents.find((x) => x.id === e.agent_id);
+    const prev = done.find((x) => x.agent_id === e.agent_id && x.id !== e.id);
+    return { id: e.agent_id, name: a?.name ?? "Agent", tier: a?.risk_tier, stage: a?.lifecycle_status, score: e.trust_score as number, delta: prev ? (e.trust_score as number) - (prev.trust_score as number) : null, hist: (trend.perAgent[e.agent_id] ?? []).filter((v) => !Number.isNaN(v)) };
+  }).sort((a, b) => a.score - b.score);
+  const avgNow = trend.avg[WEEKS - 1], avgThen = trend.avg.find((v) => !Number.isNaN(v));
+  const blockedAll = latest.reduce((acc, e) => { Object.values(e.summary.by_category ?? {}).forEach((st) => { acc.t += st.total; acc.b += st.blocked; }); return acc; }, { t: 0, b: 0 });
+
+  // Red-team block rate by attack category, latest run per agent.
   const cats = useMemo(() => {
     const m: Record<string, { total: number; blocked: number }> = {};
-    (evals.data ?? []).filter((e) => e.status === "completed").forEach((e) => Object.entries(e.summary.by_category ?? {}).forEach(([c, st]) => { m[c] = m[c] ?? { total: 0, blocked: 0 }; m[c].total += st.total; m[c].blocked += st.blocked; }));
+    latest.forEach((e) => Object.entries(e.summary.by_category ?? {}).forEach(([c, st]) => { m[c] = m[c] ?? { total: 0, blocked: 0 }; m[c].total += st.total; m[c].blocked += st.blocked; }));
     return Object.entries(m).map(([c, v]) => ({ c, rate: v.total ? (v.blocked / v.total) * 100 : 0, ...v })).sort((a, b) => a.rate - b.rate);
-  }, [evals.data]);
+  }, [latest]);
 
   type Item = { key: string; sev: "high" | "med" | "low"; title: string; sub: string; href: string; cta: string };
   const todo: Item[] = [
@@ -102,89 +137,93 @@ export default function GovernancePage() {
       )}
 
       <div className="gv-r1">
-        <Card labelledBy="t-st">
-          <CardHeader id="t-st" title="Agents by lifecycle stage" sub={`${agents.length} agents · registration to production`} action={<MoreLink href="/governance/agents">Registry</MoreLink>} />
-          <div className="gv-chart">
-            {agentsQ.isLoading ? <Skel h={230} /> : (
-              <StackedBars height="fill" totals barMax={44} ariaLabel="Agents by lifecycle stage and risk tier" labels={STAGES.map((st) => LIFE_LABEL[st])}
-                series={[
-                  ...[1, 2, 3, 4].map((t) => ({ name: `Tier ${t} · ${TIER_LABEL[t]}`, color: TIER_COLOR[t], values: STAGES.map((st) => by(st).filter((x) => x.risk_tier === t).length) })),
-                  { name: "Not assessed", color: "var(--line-2)", values: STAGES.map((st) => by(st).filter((x) => !x.risk_tier).length) },
-                ]}
-                fmt={(v) => String(v)} fmtAxis={(v) => String(Math.round(v))} />
-            )}
-          </div>
-          <div className="gv-leg">{[1, 2, 3, 4].map((t) => <span key={t}><i style={{ background: TIER_COLOR[t] }} />Tier {t}</span>)}<span><i style={{ background: "var(--line-2)" }} />Not assessed</span></div>
-        </Card>
-
-        <Card labelledBy="t-tier">
-          <CardHeader id="t-tier" title="Risk tiers" sub={`${assessed} assessed · ${agents.length - assessed} pending`} action={<MoreLink href="/governance/risk">Assessments</MoreLink>} />
-          <div className="gv-donut">
-            {agentsQ.isLoading ? <Skel w={150} h={150} /> : (
-              <Ring size={148} stroke={20} gap={4} active={hot} onActive={setHot} ariaLabel={tiers.map((x) => `Tier ${x.t} ${x.n}`).join(", ")}
-                slices={tiers.map((x) => ({ name: `Tier ${x.t} · ${TIER_LABEL[x.t]}`, value: x.n, color: TIER_COLOR[x.t] }))}
-                center={hot != null
-                  ? <span className="gv-dc"><b className="num">{tiers[hot].n}</b><span>Tier {tiers[hot].t}</span></span>
-                  : <span className="gv-dc"><b className="num">{assessed}</b><span>assessed</span></span>} />
-            )}
-            <ul className="gv-tl">
-              {[...tiers].reverse().map((x) => (
-                <li key={x.t} className={hot != null && hot !== x.t - 1 ? "dim" : ""} onMouseEnter={() => setHot(x.t - 1)} onMouseLeave={() => setHot(null)}>
-                  <div className="h"><i style={{ background: TIER_COLOR[x.t] }} aria-hidden /><span>Tier {x.t} <small>{TIER_LABEL[x.t]}</small></span><b className="num">{x.n}</b></div>
-                  <span className="bar" aria-hidden><i style={{ width: `${assessed ? (x.n / assessed) * 100 : 0}%`, background: TIER_COLOR[x.t] }} /></span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Card>
-
         <Card labelledBy="t-trust">
-          <CardHeader id="t-trust" title="Trust scores" sub={`Latest red-team score · release bar ${BAR}`} action={<MoreLink href="/governance/evaluations">Red-team</MoreLink>} />
-          <div className="gv-hb">
-            {agentsQ.isLoading ? <SkelRows rows={6} /> : !scored.length ? <Empty icon={ShieldCheck} title="No scores yet" /> : (
-              <>
-                <div className="gv-hb-rows">
-                  {scored.map((a) => {
-                    const v = a.trust_score as number, f = Math.max(0, (v - 50) / 50);
-                    return (
-                      <Link key={a.id} href={`/governance/agents/${a.id}`} className="gv-hb-row" title={`${a.name} · ${v.toFixed(1)}`}>
-                        <span className="n">{a.name}</span>
-                        <span className="gv-dp">
-                          <i className="stem" style={{ width: `${f * 100}%` }} />
-                          <i className="dot" style={{ left: `${f * 100}%`, background: pass(v) }} />
-                        </span>
-                        <b className="num">{v.toFixed(1)}</b>
-                      </Link>
-                    );
-                  })}
-                  <span className="gv-hb-line" style={{ ["--p" as string]: (BAR - 50) / 50 } as React.CSSProperties} aria-hidden><em>{BAR}</em></span>
-                </div>
-                <div className="gv-hb-axis" aria-hidden><span /><span className="t">{[50, 60, 70, 80, 90, 100].map((v) => <i key={v} style={{ left: `${((v - 50) / 50) * 100}%` }}>{v}</i>)}</span><span /></div>
-              </>
+          <CardHeader id="t-trust" title="Trust score" action={<MoreLink href="/governance/evaluations">Red-team runs</MoreLink>} />
+          <div className="gv-trust">
+            <div className="gv-tc">
+              <div className="gv-hl">
+                <b className="num">{Number.isFinite(avgNow) ? avgNow.toFixed(1) : "—"}</b>
+                {avgThen != null && Number.isFinite(avgNow) && <Delta v={avgNow - avgThen} />}
+                <span>average of {latest.length} tested agents · {WEEKS} weeks</span>
+              </div>
+              <div className="gv-chart">
+                {evals.isLoading ? <Skel h={220} /> : (
+                  <RangeTrend ariaLabel="Average trust score per week with highest and lowest agent" labels={trend.labels} longs={trend.longs}
+                    avg={trend.avg} lo={trend.lo} hi={trend.hi} refValue={BAR} refLabel={`Release bar ${BAR}`} yMin={60} yMax={100} fmt={(v) => v.toFixed(1)}
+                    extra={trend.passing.map((p, k) => [{ name: "At or above bar", value: `${p} of ${trend.counts[k]}` }])} />
+                )}
+              </div>
+              <div className="gv-key">
+                <span><i className="ln" />Average</span><span><i className="rg" />Range, lowest to highest agent</span><span><i className="rf" />Release bar</span>
+              </div>
+            </div>
+            <div className="gv-rank">
+              <div className="gv-rank-h"><span>By agent · weakest first</span><span>Latest</span></div>
+              {evals.isLoading ? <SkelRows rows={6} /> : rank.map((r) => (
+                <Link key={r.id} href={`/governance/agents/${r.id}`} className="gv-rank-row">
+                  <span className="who"><b>{r.name}</b><small>{r.tier ? `Tier ${r.tier}` : "No tier"} · {r.stage ? LIFE_LABEL[r.stage] : ""}</small></span>
+                  <span className="spk"><Sparkline values={r.hist} width={64} height={22} color={r.score >= BAR ? "var(--accent)" : "var(--danger)"} /></span>
+                  <span className="sc"><b className="num">{r.score.toFixed(1)}</b>{r.delta != null ? <Delta v={r.delta} small /> : <small className="muted">new</small>}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card labelledBy="t-risk">
+          <CardHeader id="t-risk" title="Risk posture" action={<MoreLink href="/governance/risk">Assessments</MoreLink>} />
+          <div className="gv-pad">
+            <div className="gv-hl"><b className="num">{assessed}</b><span>of {agents.length} agents risk-assessed</span></div>
+            {agentsQ.isLoading ? <Skel h={14} /> : (
+              <div className="gv-stack" role="img" aria-label={tiers.map((x) => `Tier ${x.t}: ${x.n}`).join(", ")}>
+                {[...tiers].reverse().filter((x) => x.n).map((x) => <i key={x.t} style={{ flexGrow: x.n, background: TIER_COLOR[x.t] }} title={`Tier ${x.t} · ${x.n}`} />)}
+                {agents.length - assessed > 0 && <i className="na" style={{ flexGrow: agents.length - assessed }} title={`Not assessed · ${agents.length - assessed}`} />}
+              </div>
             )}
+            <ul className="gv-tiers">
+              {[...tiers].reverse().map((x) => {
+                const names = agents.filter((a) => a.risk_tier === x.t).map((a) => a.name);
+                return (
+                  <li key={x.t}>
+                    <i style={{ background: TIER_COLOR[x.t] }} aria-hidden />
+                    <span className="t"><b>Tier {x.t}</b><small>{TIER_LABEL[x.t]}</small></span>
+                    <span className="nm" title={names.join(", ")}>{names.join(", ") || "—"}</span>
+                    <b className="num">{x.n}</b>
+                  </li>
+                );
+              })}
+              <li className="na">
+                <i aria-hidden />
+                <span className="t"><b>Not assessed</b></span>
+                <span className="nm">{agents.filter((a) => !a.risk_tier).map((a) => a.name).join(", ") || "—"}</span>
+                <b className="num">{agents.length - assessed}</b>
+              </li>
+            </ul>
           </div>
         </Card>
       </div>
 
       <div className="gv-r2">
         <Card labelledBy="t-ev">
-          <CardHeader id="t-ev" title="Governance events" sub={`Last 14 days · ${evTotal} events · ${evHigh} high severity`} action={<MoreLink href="/governance/events">Audit log</MoreLink>} />
+          <CardHeader id="t-ev" title="Governance activity" action={<MoreLink href="/governance/events">Audit log</MoreLink>} />
+          <div className="gv-hl gv-pad0">
+            <b className="num">{evTotal}</b><span>events · last 14 days</span>
+            <span className="gv-inl"><span><i style={{ background: "var(--g1)" }} />Info</span><span><i style={{ background: "var(--g3)" }} />Medium</span><span><i style={{ background: "var(--danger)" }} />High · {evHigh}</span></span>
+          </div>
           <div className="gv-chart">
-            {events.isError ? <ErrorState error={events.error} compact /> : events.isLoading ? <Skel h={220} /> : (
-              <StackedBars height="fill" ariaLabel="Governance events per day by severity" labels={evDays.map((d) => d.label)} longs={evDays.map((d) => d.long)}
-                barMax={30} series={[{ name: "Info", color: "var(--g1)", values: evDays.map((d) => d.info) }, { name: "Medium", color: "var(--g3)", values: evDays.map((d) => d.med) }, { name: "High", color: "var(--danger)", values: evDays.map((d) => d.high) }]}
+            {events.isError ? <ErrorState error={events.error} compact /> : events.isLoading ? <Skel h={200} /> : (
+              <StackedBars height="fill" barMax={14} ariaLabel="Governance events per day by severity" labels={evDays.map((d) => d.label)} longs={evDays.map((d) => d.long)}
+                series={[{ name: "Info", color: "var(--g1)", values: evDays.map((d) => d.info) }, { name: "Medium", color: "var(--g3)", values: evDays.map((d) => d.med) }, { name: "High", color: "var(--danger)", values: evDays.map((d) => d.high) }]}
                 fmt={(v) => String(v)} fmtAxis={(v) => String(Math.round(v))} />
             )}
-          </div>
-          <div className="gv-leg">
-            <span><i style={{ background: "var(--g1)" }} />Info <b className="num">{evTotal - evHigh - evMed}</b></span>
-            <span><i style={{ background: "var(--g3)" }} />Medium <b className="num">{evMed}</b></span>
-            <span><i style={{ background: "var(--danger)" }} />High <b className="num">{evHigh}</b></span>
           </div>
         </Card>
 
         <Card labelledBy="t-rt">
-          <CardHeader id="t-rt" title="Red-team block rate" sub={`Attacks blocked by type · shaded gap to the ${BAR}% target`} action={<MoreLink href="/governance/evaluations">Runs</MoreLink>} />
+          <CardHeader id="t-rt" title="Red-team results by attack type" action={<MoreLink href="/governance/evaluations">Runs</MoreLink>} />
+          <div className="gv-hl gv-pad0">
+            <b className="num">{blockedAll.t ? ((blockedAll.b / blockedAll.t) * 100).toFixed(1) : "—"}%</b><span>of attacks blocked · target {BAR}%</span>
+          </div>
           <div className="gv-hb">
             {evals.isLoading ? <SkelRows rows={6} /> : !cats.length ? <Empty icon={ShieldCheck} title="No completed runs" /> : (
               <div className="gv-hb-rows">
@@ -202,7 +241,8 @@ export default function GovernancePage() {
         </Card>
 
         <Card labelledBy="t-todo">
-          <CardHeader id="t-todo" title="Needs attention" sub={`${todo.length} open items`} bordered />
+          <CardHeader id="t-todo" title="Needs attention" />
+          <div className="gv-hl gv-pad0"><b className="num">{todo.length}</b><span>open items</span></div>
           <div className="scroll-y" style={{ flex: "1 1 0", minHeight: 0 }}>
             {agentsQ.isLoading ? <SkelRows rows={4} /> : !todo.length ? <Empty icon={ClipboardCheck} title="Nothing open" /> : (
               <ul className="gv-list">
