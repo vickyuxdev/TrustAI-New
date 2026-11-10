@@ -137,19 +137,19 @@ export function BarChart({ data, fmt, fmtAxis, height = 220, emphasis = "last", 
 
 export interface Series { name: string; color: string; values: number[] }
 
-export function StackedBars({ labels, longs, series, fmt, fmtAxis, height = 240, ariaLabel }: {
-  labels: string[]; longs?: string[]; series: Series[]; fmt: (v: number) => string; fmtAxis: (v: number) => string; height?: number | "fill"; ariaLabel: string;
+export function StackedBars({ labels, longs, series, fmt, fmtAxis, height = 240, totals: showTotals = false, barMax = 40, ariaLabel }: {
+  labels: string[]; longs?: string[]; series: Series[]; fmt: (v: number) => string; fmtAxis: (v: number) => string; height?: number | "fill"; totals?: boolean; barMax?: number; ariaLabel: string;
 }) {
   const [ref, { w, h }] = useSize<HTMLDivElement>();
   const [tip, setTip] = useState<TipState>(null);
   const H = height === "fill" ? h : height;
   const n = labels.length;
-  const m = { l: 46, r: 6, t: 12, b: 22 };
+  const m = { l: 46, r: 6, t: showTotals ? 22 : 12, b: 22 };
   const pw = Math.max(0, w - m.l - m.r), ph = Math.max(0, H - m.t - m.b);
   const totals = labels.map((_, i) => series.reduce((a, s) => a + (s.values[i] || 0), 0));
   const { max, step } = niceMax(Math.max(...totals, 0));
   const y = (v: number) => m.t + ph - (v / max) * ph;
-  const band = n ? pw / n : 0, bw = Math.min(40, Math.max(3, band * (n > 40 ? 0.72 : 0.5)));
+  const band = n ? pw / n : 0, bw = Math.min(barMax, Math.max(3, band * (n > 40 ? 0.72 : 0.5)));
   const skip = every(n, pw);
   const ticks: number[] = [];
   for (let v = 0; v <= max + 1e-12; v += step) ticks.push(v);
@@ -189,6 +189,7 @@ export function StackedBars({ labels, longs, series, fmt, fmtAxis, height = 240,
                     })}
                   </g>
                 ) : <rect x={x0} y={y(0) - 2} width={bw} height={2} rx={1} fill="var(--line-2)" />}
+                {showTotals && <text x={cx} y={y(totals[i]) - 7} textAnchor="middle" className="vl">{fmt(totals[i])}</text>}
                 {((i % skip === 0 && (i === n - 1 || n - 1 - i >= skip)) || i === n - 1) && <text x={cx} y={H - 5} textAnchor="middle" className="ax">{lab}</text>}
               </g>
             );
@@ -265,11 +266,11 @@ export function LineChart({ labels, longs, series, fmt, fmtAxis, height = 200, a
 
 export interface Slice { name: string; value: number; color: string }
 
-export function Ring({ slices, size = 72, stroke = 8, center, active, onActive, ariaLabel }: {
-  slices: Slice[]; size?: number; stroke?: number; center?: ReactNode; active?: number | null; onActive?: (i: number | null) => void; ariaLabel: string;
+export function Ring({ slices, size = 72, stroke = 8, gap = 2, center, active, onActive, ariaLabel }: {
+  slices: Slice[]; size?: number; stroke?: number; gap?: number; center?: ReactNode; active?: number | null; onActive?: (i: number | null) => void; ariaLabel: string;
 }) {
   const total = slices.reduce((a, s) => a + s.value, 0);
-  const R = size / 2 - stroke / 2 - 1, C = 2 * Math.PI * R, GAP = slices.filter((s) => s.value > 0).length > 1 ? 2 : 0;
+  const R = size / 2 - stroke / 2 - 1, C = 2 * Math.PI * R, GAP = slices.filter((s) => s.value > 0).length > 1 ? gap : 0;
   let off = 0;
   return (
     <div className={`ring${active != null ? " dim" : ""}`} style={{ width: size, height: size }}>

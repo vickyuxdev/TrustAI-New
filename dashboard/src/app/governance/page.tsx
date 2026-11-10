@@ -1,8 +1,8 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ClipboardCheck, Library, ShieldCheck, TriangleAlert } from "lucide-react";
-import { BarChart, CheckRing, Ring, StackedBars } from "@/components/charts";
+import { CheckRing, Ring, StackedBars } from "@/components/charts";
 import { LIFE_LABEL, TIER_LABEL } from "@/components/gov";
 import { Card, CardHeader, Empty, ErrorState, Kpi, MoreLink, PageHead, Skel, SkelRows } from "@/components/ui";
 import { useAgents, useAssessments, useEvaluations, useEvents, useOverview, type LifecycleStatus } from "@/lib/governance";
@@ -10,7 +10,8 @@ import { ago, compact, humanize } from "@/lib/format";
 
 const BAR = 95;
 const STAGES: LifecycleStatus[] = ["registered", "onboarded", "assessed", "evaluated", "approved", "deployed", "suspended"];
-const TIER_COLOR: Record<number, string> = { 1: "var(--s3)", 2: "var(--s2)", 3: "var(--wait)", 4: "var(--danger)" };
+const TIER_COLOR: Record<number, string> = { 1: "var(--r1)", 2: "var(--r2)", 3: "var(--r3)", 4: "var(--r4)" };
+const zone = (v: number) => (v >= BAR ? "var(--r1)" : v >= 85 ? "var(--r3)" : "var(--r4)");
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const dayFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const longFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -18,7 +19,7 @@ const longFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "sho
 /** Small KPI meter with a tick at the 95 release bar. */
 function TrustMeter({ score }: { score: number }) {
   const f = Math.max(0, Math.min(1, (score - 50) / 50));
-  const c = score >= BAR ? "var(--accent)" : score >= 85 ? "var(--wait)" : "var(--danger)";
+  const c = zone(score);
   return <span className="gv-track" style={{ width: 88 }} aria-hidden><i style={{ width: `${f * 100}%`, background: c }} /><em style={{ left: `${((BAR - 50) / 50) * 100}%` }} /></span>;
 }
 
@@ -41,6 +42,7 @@ export default function GovernancePage() {
   const running = (evals.data ?? []).filter((e) => e.status === "running" || e.status === "queued");
   const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? "Agent";
   const tiers = [1, 2, 3, 4].map((t) => ({ t, n: agents.filter((a) => a.risk_tier === t).length }));
+  const [hot, setHot] = useState<number | null>(null);
   const assessed = tiers.reduce((a, x) => a + x.n, 0);
 
   // Governance events per day for the last 14 days, split by severity.
@@ -57,6 +59,7 @@ export default function GovernancePage() {
   }, [events.data]);
   const evTotal = evDays.reduce((a, d) => a + d.high + d.med + d.info, 0);
   const evHigh = evDays.reduce((a, d) => a + d.high, 0);
+  const evMed = evDays.reduce((a, d) => a + d.med, 0);
 
   // Red-team block rate by attack category across completed runs.
   const cats = useMemo(() => {
@@ -102,24 +105,33 @@ export default function GovernancePage() {
           <CardHeader id="t-st" title="Agents by lifecycle stage" sub={`${agents.length} agents · registration to production`} action={<MoreLink href="/governance/agents">Registry</MoreLink>} />
           <div className="gv-chart">
             {agentsQ.isLoading ? <Skel h={230} /> : (
-              <BarChart height="fill" emphasis="none" ariaLabel="Agents by lifecycle stage"
-                data={STAGES.map((s) => ({ label: LIFE_LABEL[s], long: LIFE_LABEL[s], value: by(s).length, extra: [{ name: "Agents", value: by(s).map((a) => a.name).join(", ") || "None" }] }))}
+              <StackedBars height="fill" totals barMax={44} ariaLabel="Agents by lifecycle stage and risk tier" labels={STAGES.map((st) => LIFE_LABEL[st])}
+                series={[
+                  ...[1, 2, 3, 4].map((t) => ({ name: `Tier ${t} · ${TIER_LABEL[t]}`, color: TIER_COLOR[t], values: STAGES.map((st) => by(st).filter((x) => x.risk_tier === t).length) })),
+                  { name: "Not assessed", color: "var(--line-2)", values: STAGES.map((st) => by(st).filter((x) => !x.risk_tier).length) },
+                ]}
                 fmt={(v) => String(v)} fmtAxis={(v) => String(Math.round(v))} />
             )}
           </div>
+          <div className="gv-leg">{[1, 2, 3, 4].map((t) => <span key={t}><i style={{ background: TIER_COLOR[t] }} />Tier {t}</span>)}<span><i style={{ background: "var(--line-2)" }} />Not assessed</span></div>
         </Card>
 
         <Card labelledBy="t-tier">
           <CardHeader id="t-tier" title="Risk tiers" sub={`${assessed} assessed · ${agents.length - assessed} pending`} action={<MoreLink href="/governance/risk">Assessments</MoreLink>} />
           <div className="gv-donut">
             {agentsQ.isLoading ? <Skel w={150} h={150} /> : (
-              <Ring size={144} stroke={16} ariaLabel={tiers.map((x) => `Tier ${x.t} ${x.n}`).join(", ")}
+              <Ring size={148} stroke={20} gap={4} active={hot} onActive={setHot} ariaLabel={tiers.map((x) => `Tier ${x.t} ${x.n}`).join(", ")}
                 slices={tiers.map((x) => ({ name: `Tier ${x.t} · ${TIER_LABEL[x.t]}`, value: x.n, color: TIER_COLOR[x.t] }))}
-                center={<span className="gv-dc"><b className="num">{assessed}</b><span>assessed</span></span>} />
+                center={hot != null
+                  ? <span className="gv-dc"><b className="num">{tiers[hot].n}</b><span>Tier {tiers[hot].t}</span></span>
+                  : <span className="gv-dc"><b className="num">{assessed}</b><span>assessed</span></span>} />
             )}
             <ul className="gv-tl">
               {[...tiers].reverse().map((x) => (
-                <li key={x.t}><i style={{ background: TIER_COLOR[x.t] }} aria-hidden /><span>Tier {x.t}<small>{TIER_LABEL[x.t]}</small></span><b className="num">{x.n}</b><em>{assessed ? Math.round((x.n / assessed) * 100) : 0}%</em></li>
+                <li key={x.t} className={hot != null && hot !== x.t - 1 ? "dim" : ""} onMouseEnter={() => setHot(x.t - 1)} onMouseLeave={() => setHot(null)}>
+                  <div className="h"><i style={{ background: TIER_COLOR[x.t] }} aria-hidden /><span>Tier {x.t} <small>{TIER_LABEL[x.t]}</small></span><b className="num">{x.n}</b></div>
+                  <span className="bar" aria-hidden><i style={{ width: `${assessed ? (x.n / assessed) * 100 : 0}%`, background: TIER_COLOR[x.t] }} /></span>
+                </li>
               ))}
             </ul>
           </div>
@@ -132,18 +144,23 @@ export default function GovernancePage() {
               <>
                 <div className="gv-hb-rows">
                   {scored.map((a) => {
-                    const s = a.trust_score as number, f = (s - 50) / 50;
+                    const v = a.trust_score as number, f = Math.max(0, (v - 50) / 50);
                     return (
-                      <Link key={a.id} href={`/governance/agents/${a.id}`} className="gv-hb-row" title={`${a.name} · ${s.toFixed(1)}`}>
+                      <Link key={a.id} href={`/governance/agents/${a.id}`} className="gv-hb-row" title={`${a.name} · ${v.toFixed(1)}`}>
                         <span className="n">{a.name}</span>
-                        <span className="t"><i style={{ width: `${Math.max(0, f) * 100}%`, background: s >= BAR ? "var(--accent)" : s >= 85 ? "var(--wait)" : "var(--danger)" }} /></span>
-                        <b className="num" style={{ color: s >= BAR ? undefined : s >= 85 ? "var(--wait)" : "var(--danger)" }}>{s.toFixed(1)}</b>
+                        <span className="gv-dp">
+                          <i className="z" style={{ left: 0, width: "70%", ["--z" as string]: "var(--r4)" } as React.CSSProperties} />
+                          <i className="z" style={{ left: "70%", width: "20%", ["--z" as string]: "var(--r3)" } as React.CSSProperties} />
+                          <i className="z" style={{ left: "90%", width: "10%", ["--z" as string]: "var(--r1)" } as React.CSSProperties} />
+                          <i className="stem" style={{ width: `${f * 100}%`, background: zone(v) }} />
+                          <i className="dot" style={{ left: `${f * 100}%`, background: zone(v) }} />
+                        </span>
+                        <b className="num">{v.toFixed(1)}</b>
                       </Link>
                     );
                   })}
-                  <span className="gv-hb-line" style={{ ["--p" as string]: (BAR - 50) / 50 } as React.CSSProperties} aria-hidden><em>{BAR}</em></span>
                 </div>
-                <div className="gv-hb-axis" aria-hidden><span /><span className="t">{[50, 60, 70, 80, 90, 100].map((v) => <i key={v} style={{ left: `${((v - 50) / 50) * 100}%` }}>{v}</i>)}</span><span /></div>
+                <div className="gv-hb-axis" aria-hidden><span /><span className="t">{[50, 60, 70, 85, 95].map((v) => <i key={v} style={{ left: `${((v - 50) / 50) * 100}%` }}>{v}</i>)}</span><span /></div>
               </>
             )}
           </div>
@@ -156,11 +173,15 @@ export default function GovernancePage() {
           <div className="gv-chart">
             {events.isError ? <ErrorState error={events.error} compact /> : events.isLoading ? <Skel h={220} /> : (
               <StackedBars height="fill" ariaLabel="Governance events per day by severity" labels={evDays.map((d) => d.label)} longs={evDays.map((d) => d.long)}
-                series={[{ name: "Info", color: "var(--accent-line)", values: evDays.map((d) => d.info) }, { name: "Medium", color: "var(--wait)", values: evDays.map((d) => d.med) }, { name: "High", color: "var(--danger)", values: evDays.map((d) => d.high) }]}
+                barMax={30} series={[{ name: "Info", color: "var(--r2-soft)", values: evDays.map((d) => d.info) }, { name: "Medium", color: "var(--r3)", values: evDays.map((d) => d.med) }, { name: "High", color: "var(--r4)", values: evDays.map((d) => d.high) }]}
                 fmt={(v) => String(v)} fmtAxis={(v) => String(Math.round(v))} />
             )}
           </div>
-          <div className="gv-leg"><span><i style={{ background: "var(--accent-line)" }} />Info</span><span><i style={{ background: "var(--wait)" }} />Medium</span><span><i style={{ background: "var(--danger)" }} />High</span></div>
+          <div className="gv-leg">
+            <span><i style={{ background: "var(--r2-soft)" }} />Info <b className="num">{evTotal - evHigh - evMed}</b></span>
+            <span><i style={{ background: "var(--r3)" }} />Medium <b className="num">{evMed}</b></span>
+            <span><i style={{ background: "var(--r4)" }} />High <b className="num">{evHigh}</b></span>
+          </div>
         </Card>
 
         <Card labelledBy="t-rt">
@@ -171,7 +192,7 @@ export default function GovernancePage() {
                 {cats.map((c) => (
                   <div key={c.c} className="gv-hb-row" title={`${c.blocked} of ${c.total} attacks blocked`}>
                     <span className="n">{humanize(c.c)}</span>
-                    <span className="t"><i style={{ width: `${c.rate}%`, background: c.rate >= BAR ? "var(--accent)" : c.rate >= 85 ? "var(--wait)" : "var(--danger)" }} /></span>
+                    <span className="gv-bb"><i style={{ width: `${c.rate}%`, ["--z" as string]: zone(c.rate) } as React.CSSProperties} /></span>
                     <b className="num">{c.rate.toFixed(0)}%</b>
                   </div>
                 ))}
