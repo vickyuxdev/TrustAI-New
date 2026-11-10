@@ -38,11 +38,9 @@
   --s1: #146C54;
   --s2: #62A88D;
   --s3: #B9D8C9;
-  --r1: #22A06B;
-  --r2: #3B82D6;
-  --r3: #E08A1E;
-  --r4: #D63A3A;
-  --r2-soft: #9CC0EC;
+  --g1: #A9D3C0;
+  --g2: #4F9E80;
+  --g3: #14634D;
   --fill: rgba(20, 108, 84, .08);
   --shadow-1: 0 1px 2px rgba(20, 32, 27, .05);
   --shadow-2: 0 1px 2px rgba(20, 32, 27, .04), 0 10px 28px -12px rgba(20, 32, 27, .22);
@@ -84,11 +82,9 @@
   --s1: #3CC59A;
   --s2: #2A8A6C;
   --s3: #1E5545;
-  --r1: #2AA676;
-  --r2: #4A8BE0;
-  --r3: #C4871F;
-  --r4: #C9342E;
-  --r2-soft: #2F5A8F;
+  --g1: #24604D;
+  --g2: #2F9673;
+  --g3: #67D6B1;
   --fill: rgba(60, 197, 154, .09);
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .45);
   --shadow-2: 0 1px 2px rgba(0, 0, 0, .45), 0 12px 30px -12px rgba(0, 0, 0, .75);
@@ -837,14 +833,13 @@ tr:hover .cl-go { color: var(--accent-text); transform: translateX(2px); }
 .gv-tl .bar { position: relative; display: block; height: 4px; border-radius: 2px; background: var(--hover); margin-left: 19px; }
 .gv-tl .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; }
 .gv-dp { position: relative; height: 14px; }
-.gv-dp .z { position: absolute; top: 3px; height: 8px; background: color-mix(in srgb, var(--z) 18%, transparent); }
-.gv-dp .z:first-child { border-radius: 4px 0 0 4px; } .gv-dp .z:nth-child(3) { border-radius: 0 4px 4px 0; }
-.gv-dp .stem { position: absolute; left: 0; top: 6px; height: 2px; border-radius: 1px; opacity: .55; }
-.gv-dp .dot { position: absolute; top: 1px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; box-shadow: 0 0 0 2.5px var(--panel), 0 1px 3px rgba(0,0,0,.18); }
-a.gv-hb-row:hover .gv-dp .dot { transform: scale(1.2); }
-.gv-dp .dot { transition: transform .15s; }
-.gv-bb { position: relative; height: 12px; border-radius: 4px; background: var(--hover); overflow: hidden; }
-.gv-bb i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: linear-gradient(90deg, color-mix(in srgb, var(--z) 70%, var(--panel)), var(--z)); }
+.gv-dp::before { content: ""; position: absolute; left: 0; right: 0; top: 6px; height: 2px; border-radius: 1px; background: var(--line-soft); }
+.gv-dp .stem { position: absolute; left: 0; top: 6px; height: 2px; border-radius: 1px; background: var(--line-2); }
+.gv-dp .dot { position: absolute; top: 2px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; box-shadow: 0 0 0 2px var(--panel); transition: transform .15s; }
+a.gv-hb-row:hover .gv-dp .dot { transform: scale(1.25); }
+.gv-bb { position: relative; height: 10px; border-radius: 3px; background: var(--hover); }
+.gv-bb i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px 0 0 3px; background: var(--g2); }
+.gv-bb em { position: absolute; top: 0; bottom: 0; border-radius: 0 3px 3px 0; background: repeating-linear-gradient(135deg, var(--danger-line) 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1px var(--danger-line); }
 .gv-leg b { font-weight: 600; color: var(--text); margin-left: 2px; }
 .gv-hb { --gv-n: 150px; --gv-v: 44px; flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 18px 14px; }
 .gv-hb-rows { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-around; }
@@ -865,7 +860,7 @@ a.gv-hb-row:hover .n { color: var(--accent-text); }
 .gv-list b { display: block; font-size: 12.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gv-list small { display: block; font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gv-sev { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); }
-.gv-sev.high { background: var(--r4); } .gv-sev.med { background: var(--r3); } .gv-sev.low { background: var(--r2); }
+.gv-sev.high { background: var(--danger); } .gv-sev.med { background: var(--wait); } .gv-sev.low { background: var(--g2); }
 .gv-link { font-size: 12px; font-weight: 600; color: var(--accent-text); white-space: nowrap; }
 .gv-link:hover { text-decoration: underline; }
 @container pane (max-width: 1380px) {

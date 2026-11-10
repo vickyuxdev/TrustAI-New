@@ -10,8 +10,9 @@ import { ago, compact, humanize } from "@/lib/format";
 
 const BAR = 95;
 const STAGES: LifecycleStatus[] = ["registered", "onboarded", "assessed", "evaluated", "approved", "deployed", "suspended"];
-const TIER_COLOR: Record<number, string> = { 1: "var(--r1)", 2: "var(--r2)", 3: "var(--r3)", 4: "var(--r4)" };
-const zone = (v: number) => (v >= BAR ? "var(--r1)" : v >= 85 ? "var(--r3)" : "var(--r4)");
+// Risk tiers use the brand's evergreen ramp (light → dark = low → high); red is kept for the critical tier only.
+const TIER_COLOR: Record<number, string> = { 1: "var(--g1)", 2: "var(--g2)", 3: "var(--g3)", 4: "var(--danger)" };
+const pass = (v: number) => (v >= BAR ? "var(--accent)" : "var(--danger)");
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const dayFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const longFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -19,7 +20,7 @@ const longFmt = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "sho
 /** Small KPI meter with a tick at the 95 release bar. */
 function TrustMeter({ score }: { score: number }) {
   const f = Math.max(0, Math.min(1, (score - 50) / 50));
-  const c = zone(score);
+  const c = score >= BAR ? "var(--accent)" : "var(--wait)";
   return <span className="gv-track" style={{ width: 88 }} aria-hidden><i style={{ width: `${f * 100}%`, background: c }} /><em style={{ left: `${((BAR - 50) / 50) * 100}%` }} /></span>;
 }
 
@@ -149,18 +150,16 @@ export default function GovernancePage() {
                       <Link key={a.id} href={`/governance/agents/${a.id}`} className="gv-hb-row" title={`${a.name} · ${v.toFixed(1)}`}>
                         <span className="n">{a.name}</span>
                         <span className="gv-dp">
-                          <i className="z" style={{ left: 0, width: "70%", ["--z" as string]: "var(--r4)" } as React.CSSProperties} />
-                          <i className="z" style={{ left: "70%", width: "20%", ["--z" as string]: "var(--r3)" } as React.CSSProperties} />
-                          <i className="z" style={{ left: "90%", width: "10%", ["--z" as string]: "var(--r1)" } as React.CSSProperties} />
-                          <i className="stem" style={{ width: `${f * 100}%`, background: zone(v) }} />
-                          <i className="dot" style={{ left: `${f * 100}%`, background: zone(v) }} />
+                          <i className="stem" style={{ width: `${f * 100}%` }} />
+                          <i className="dot" style={{ left: `${f * 100}%`, background: pass(v) }} />
                         </span>
                         <b className="num">{v.toFixed(1)}</b>
                       </Link>
                     );
                   })}
+                  <span className="gv-hb-line" style={{ ["--p" as string]: (BAR - 50) / 50 } as React.CSSProperties} aria-hidden><em>{BAR}</em></span>
                 </div>
-                <div className="gv-hb-axis" aria-hidden><span /><span className="t">{[50, 60, 70, 85, 95].map((v) => <i key={v} style={{ left: `${((v - 50) / 50) * 100}%` }}>{v}</i>)}</span><span /></div>
+                <div className="gv-hb-axis" aria-hidden><span /><span className="t">{[50, 60, 70, 80, 90, 100].map((v) => <i key={v} style={{ left: `${((v - 50) / 50) * 100}%` }}>{v}</i>)}</span><span /></div>
               </>
             )}
           </div>
@@ -173,26 +172,26 @@ export default function GovernancePage() {
           <div className="gv-chart">
             {events.isError ? <ErrorState error={events.error} compact /> : events.isLoading ? <Skel h={220} /> : (
               <StackedBars height="fill" ariaLabel="Governance events per day by severity" labels={evDays.map((d) => d.label)} longs={evDays.map((d) => d.long)}
-                barMax={30} series={[{ name: "Info", color: "var(--r2-soft)", values: evDays.map((d) => d.info) }, { name: "Medium", color: "var(--r3)", values: evDays.map((d) => d.med) }, { name: "High", color: "var(--r4)", values: evDays.map((d) => d.high) }]}
+                barMax={30} series={[{ name: "Info", color: "var(--g1)", values: evDays.map((d) => d.info) }, { name: "Medium", color: "var(--g3)", values: evDays.map((d) => d.med) }, { name: "High", color: "var(--danger)", values: evDays.map((d) => d.high) }]}
                 fmt={(v) => String(v)} fmtAxis={(v) => String(Math.round(v))} />
             )}
           </div>
           <div className="gv-leg">
-            <span><i style={{ background: "var(--r2-soft)" }} />Info <b className="num">{evTotal - evHigh - evMed}</b></span>
-            <span><i style={{ background: "var(--r3)" }} />Medium <b className="num">{evMed}</b></span>
-            <span><i style={{ background: "var(--r4)" }} />High <b className="num">{evHigh}</b></span>
+            <span><i style={{ background: "var(--g1)" }} />Info <b className="num">{evTotal - evHigh - evMed}</b></span>
+            <span><i style={{ background: "var(--g3)" }} />Medium <b className="num">{evMed}</b></span>
+            <span><i style={{ background: "var(--danger)" }} />High <b className="num">{evHigh}</b></span>
           </div>
         </Card>
 
         <Card labelledBy="t-rt">
-          <CardHeader id="t-rt" title="Red-team block rate" sub={`Attacks blocked, by type · target ${BAR}%`} action={<MoreLink href="/governance/evaluations">Runs</MoreLink>} />
+          <CardHeader id="t-rt" title="Red-team block rate" sub={`Attacks blocked by type · shaded gap to the ${BAR}% target`} action={<MoreLink href="/governance/evaluations">Runs</MoreLink>} />
           <div className="gv-hb">
             {evals.isLoading ? <SkelRows rows={6} /> : !cats.length ? <Empty icon={ShieldCheck} title="No completed runs" /> : (
               <div className="gv-hb-rows">
                 {cats.map((c) => (
                   <div key={c.c} className="gv-hb-row" title={`${c.blocked} of ${c.total} attacks blocked`}>
                     <span className="n">{humanize(c.c)}</span>
-                    <span className="gv-bb"><i style={{ width: `${c.rate}%`, ["--z" as string]: zone(c.rate) } as React.CSSProperties} /></span>
+                    <span className="gv-bb"><i style={{ width: `${c.rate}%` }} />{c.rate < BAR && <em style={{ left: `${c.rate}%`, width: `${BAR - c.rate}%` }} />}</span>
                     <b className="num">{c.rate.toFixed(0)}%</b>
                   </div>
                 ))}
