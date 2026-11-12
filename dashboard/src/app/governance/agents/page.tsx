@@ -1,7 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bot, Library, Plus, Search, ShieldCheck, ShieldX, Wrench } from "lucide-react";
+import { Ring, Segments, Sparkline } from "@/components/charts";
 import { LifecycleBadge, LIFE_LABEL, TierBadge, TrustScore } from "@/components/gov";
 import { Card, CardHeader, ChipSelect, Empty, ErrorState, Kpi, Modal, PageHead, SkelRows, errMsg, useToast } from "@/components/ui";
 import { LIFECYCLE_STATUSES, useAgents, useOnboardAgent, useOverview } from "@/lib/governance";
@@ -22,8 +24,19 @@ export default function RegistryPage() {
   const o = ov.data;
   const items = agents.data?.items ?? [];
   const total = agents.data?.total ?? 0;
-  const live = (o?.agents_by_status.deployed ?? 0) + (o?.agents_by_status.approved ?? 0);
-  const blocked = (o?.agents_by_status.suspended ?? 0);
+  const all = useAgents({ limit: 200 });
+  const reg = useMemo(() => all.data?.items ?? [], [all.data]);
+  const [now] = useState(() => Date.now());
+  const st = (k: string) => o?.agents_by_status[k as keyof typeof o.agents_by_status] ?? 0;
+  const live = st("deployed") + st("approved");
+  const blocked = st("suspended");
+  const regTotal = o?.agents_total ?? reg.length;
+  const onboarding = st("registered") + st("onboarded");
+  // Registry size at the end of each of the last 12 weeks.
+  const growth = useMemo(() => Array.from({ length: 12 }, (_, k) => reg.filter((a) => +new Date(a.created_at) <= now - (11 - k) * 7 * 864e5).length), [reg, now]);
+  const added30 = reg.filter((a) => +new Date(a.created_at) > now - 30 * 864e5).length;
+  const suspended = reg.filter((a) => a.lifecycle_status === "suspended");
+  const belowBar = reg.filter((a) => a.lifecycle_status === "evaluated" && a.trust_score != null && a.trust_score < 95).length;
 
   return (
     <>
@@ -31,10 +44,20 @@ export default function RegistryPage() {
         actions={<button type="button" className="btn btn-primary" onClick={() => setOpen(true)}><Plus className="ic" aria-hidden />Onboard agent</button>} />
 
       <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Registry figures">
-        <Kpi icon={Library} label="Registered agents" value={ov.isLoading ? "—" : compact(o?.agents_total)} foot={`${(o?.agents_by_status.registered ?? 0) + (o?.agents_by_status.onboarded ?? 0)} still being onboarded`} />
-        <Kpi icon={ShieldCheck} label="Cleared for production" value={ov.isLoading ? "—" : String(live)} foot={`${o?.agents_by_status.deployed ?? 0} deployed · ${o?.agents_by_status.approved ?? 0} approved`} />
-        <Kpi icon={Wrench} label="In review" value={ov.isLoading ? "—" : String((o?.agents_by_status.assessed ?? 0) + (o?.agents_by_status.evaluated ?? 0))} foot="Assessed or red-teamed, not yet approved" />
-        <Kpi icon={ShieldX} label="Suspended" tone={blocked ? "bad" : undefined} value={ov.isLoading ? "—" : String(blocked)} foot={blocked ? "Blocked from serving traffic" : "No agents blocked"} />
+        <Kpi icon={Library} label="Registered agents" value={ov.isLoading ? "—" : compact(regTotal)}
+          vis={reg.length > 1 ? <Sparkline values={growth} width={88} height={30} /> : undefined}
+          foot={<span>{added30 ? <><b className="kpi-up">+{added30}</b> in the last 30 days · </> : null}{onboarding} still onboarding</span>} />
+        <Kpi icon={ShieldCheck} label="Cleared for production" value={ov.isLoading ? "—" : <>{live}<small className="kpi-of"> / {regTotal}</small></>}
+          vis={regTotal ? <Ring size={34} stroke={5} ariaLabel={`${live} of ${regTotal} cleared`}
+            slices={[{ name: "Deployed", value: st("deployed"), color: "var(--accent)" }, { name: "Approved", value: st("approved"), color: "var(--g2)" }, { name: "Other", value: regTotal - live, color: "var(--line-2)" }]} /> : undefined}
+          foot={<span><Dot c="var(--accent)" />{st("deployed")} deployed<Dot c="var(--g2)" />{st("approved")} approved · {regTotal ? Math.round((live / regTotal) * 100) : 0}% of registry</span>} />
+        <Kpi icon={Wrench} label="In review" value={ov.isLoading ? "—" : String(st("assessed") + st("evaluated"))}
+          vis={st("assessed") + st("evaluated") ? <div style={{ width: 88 }}><Segments height={8} ariaLabel="Agents in review by step" parts={[
+            { value: st("assessed"), color: "var(--g1)", label: "Risk-assessed" }, { value: st("evaluated"), color: "var(--g3)", label: "Red-teamed" }]} /></div> : undefined}
+          foot={<span><Dot c="var(--g1)" />{st("assessed")} risk-assessed<Dot c="var(--g3)" />{st("evaluated")} red-teamed{belowBar ? ` · ${belowBar} below 95` : ""}</span>} />
+        <Kpi icon={ShieldX} label="Suspended" tone={blocked ? "bad" : undefined} value={ov.isLoading ? "—" : blocked ? <span style={{ color: "var(--danger)" }}>{blocked}</span> : "0"}
+          vis={suspended[0]?.trust_score != null ? <span className="kpi-bar" title={`Trust ${suspended[0].trust_score.toFixed(1)} of 95`}><i style={{ width: `${Math.max(0, (suspended[0].trust_score - 50) / 50) * 100}%` }} /><em /></span> : undefined}
+          foot={suspended.length ? <span>{suspended.slice(0, 2).map((a, i) => <span key={a.id}>{i ? ", " : ""}<Link className="kpi-link" href={`/governance/agents/${a.id}`}>{a.name}</Link></span>)}{suspended[0].trust_score != null ? ` · trust ${suspended[0].trust_score.toFixed(1)}, bar is 95` : ""}</span> : "No agents blocked from serving traffic"} />
       </section>
 
       <Card labelledBy="t-reg">
@@ -88,6 +111,8 @@ export default function RegistryPage() {
     </>
   );
 }
+
+const Dot = ({ c }: { c: string }) => <i className="kpi-dot" style={{ background: c }} aria-hidden />;
 
 function OnboardModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: (id: string) => void }) {
   const onboard = useOnboardAgent();
