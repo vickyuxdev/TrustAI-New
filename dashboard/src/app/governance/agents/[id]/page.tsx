@@ -2,14 +2,15 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Check, ChevronDown, ClipboardCheck, Download, Network, Plug, Plus, Power, ShieldCheck, Sparkles, Swords, X } from "lucide-react";
-import { AssessmentBadge, DecisionBadge, EvalBadge, LifecycleBadge, LifecycleSteps, LIFE_LABEL, SeverityBadge, TierBadge, TrustScore } from "@/components/gov";
+import { ArrowLeft, ArrowRight, Bot, Check, ChevronDown, ClipboardCheck, Download, Network, Plug, Plus, Power, ShieldCheck, Sparkles, Swords, Wrench, X } from "lucide-react";
+import { CheckRing, MiniBars, RangeTrend, Sparkline } from "@/components/charts";
+import { AssessmentBadge, DecisionBadge, EvalBadge, LifecycleBadge, LIFE_LABEL, TierBadge, TrustScore } from "@/components/gov";
 import { StartEvalModal } from "@/components/GovModals";
-import { Card, CopyButton, Empty, ErrorState, Modal, PageHead, Pill, Skel, SkelRows, Tabs, errMsg, useToast } from "@/components/ui";
+import { Card, CardHeader, CopyButton, Empty, ErrorState, Kpi, Modal, Pill, Skel, SkelRows, Tabs, errMsg, useToast } from "@/components/ui";
 import {
   useAgent, useAgentGateway, useAgentHistory, useAssessments, useChangeStatus, useCreateAssessment, useDeployGateway, useEvaluations, useEvents,
   useEvidence, useGate, useGatewayModels, useOptimize, usePolicies, useRecommendations, useRevokeGateway, useSetPolicies, useTestConnection,
-  type Agent, type GatewayDeployResult, type LifecycleStatus, type OptimizeResult,
+  LIFECYCLE_STATUSES, type Agent, type GatewayDeployResult, type LifecycleStatus, type OptimizeResult,
 } from "@/lib/governance";
 import { ago, humanize, ms, when } from "@/lib/format";
 
@@ -25,6 +26,14 @@ const TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> = {
 };
 type TabId = "overview" | "risk" | "policies" | "redteam" | "gateway" | "evidence";
 
+const CHECK_LABEL: Record<string, string> = {
+  lifecycle_status: "Approved for release", risk_decision: "Risk decision recorded", trust_score: "Trust score at or above 95", policies_attached: "Policies attached",
+};
+const TIER_COL = ["var(--g1)", "var(--g2)", "var(--g3)", "var(--danger)"];
+const dayFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+const sentence = (v: string) => { const t = v.replace(/_/g, " "); return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase(); };
+const fin = (e: { finished_at?: string | null; created_at: string }) => +new Date(e.finished_at ?? e.created_at);
+
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const agent = useAgent(id);
@@ -32,44 +41,71 @@ export default function AgentDetailPage() {
   const [tab, setTab] = useState<TabId>("overview");
   const assessments = useAssessments({ agent_id: id });
   const evals = useEvaluations({ agent_id: id });
+  const history = useAgentHistory(id);
 
   if (agent.isError) return <Card><ErrorState error={agent.error} onRetry={() => agent.refetch()} /></Card>;
 
+  // Date each lifecycle stage was reached, from the status history.
+  const reached: Record<string, string> = {};
+  (history.data ?? []).forEach((h) => { reached[h.to_status] = h.created_at; });
+  const path = LIFECYCLE_STATUSES.filter((s) => s !== "suspended" && s !== "retired");
+  const idx = a ? path.indexOf(a.lifecycle_status as (typeof path)[number]) : -1;
+  const off = a && (a.lifecycle_status === "suspended" || a.lifecycle_status === "retired");
+
   return (
     <>
-      <PageHead
-        kicker={<Link href="/governance/agents" className="row small muted"><ArrowLeft className="ic" style={{ width: 14, height: 14 }} aria-hidden />Agent registry</Link>}
-        title={a ? <span className="row" style={{ gap: 10 }}>{a.name}<LifecycleBadge status={a.lifecycle_status} /></span> : <Skel w={240} h={24} />}
-        sub={a ? (a.description || `${a.external_id} · v${a.version}`) : undefined}
-        actions={a && <HeaderActions agent={a} />} />
+      <Link href="/governance/agents" className="ad-back"><ArrowLeft className="ic" aria-hidden />Agent registry</Link>
+      <section className="card ad-head">
+        <header className="pd-hero">
+          <span className="pd-icon" aria-hidden><Bot className="ic" /></span>
+          <div className="pd-title">
+            <div className="pd-name">
+              <h1>{a ? a.name : <Skel w={220} h={24} />}</h1>
+              {a && <LifecycleBadge status={a.lifecycle_status} />}
+              {a && <TierBadge tier={a.risk_tier} />}
+            </div>
+            <p>{a?.description ?? " "}</p>
+            <ul className="pd-meta">
+              <li><span>Agent ID</span><b className="mono">{a?.external_id ?? "—"}</b>{a && <CopyButton text={a.external_id} label="Copy" />}</li>
+              <li><span>Version</span><b>{a ? `v${a.version}` : "—"}</b></li>
+              <li><span>Model</span><b>{a?.model ?? "Not set"}</b></li>
+              <li><span>Owner</span><b>{a?.owner ?? "—"}</b></li>
+              <li><span>Built by</span><b>{a?.built_by ?? "—"}</b></li>
+            </ul>
+          </div>
+          <div className="pd-actions">{a && <HeaderActions agent={a} />}</div>
+        </header>
+        <ol className={`ad-steps${off ? " off" : ""}`} aria-label="Lifecycle">
+          {path.map((s, i) => {
+            const state = off ? (reached[s] ? "done" : "") : idx > i ? "done" : idx === i ? "cur" : "";
+            return (
+              <li key={s} className={state}>
+                <span className="dot" aria-hidden>{state === "done" || (state === "cur" && i === path.length - 1) ? <Check className="ic" /> : i + 1}</span>
+                <span className="lb"><b>{LIFE_LABEL[s]}</b><small>{reached[s] ? dayFmt.format(new Date(reached[s])) : state === "cur" ? "Now" : "—"}</small></span>
+              </li>
+            );
+          })}
+          {off && a && <li className="bad"><span className="dot" aria-hidden><X className="ic" /></span><span className="lb"><b>{LIFE_LABEL[a.lifecycle_status]}</b><small>{reached[a.lifecycle_status] ? dayFmt.format(new Date(reached[a.lifecycle_status])) : "Now"}</small></span></li>}
+        </ol>
+      </section>
 
-      <Card>
-        <div style={{ padding: "16px 18px" }}>{a ? <LifecycleSteps status={a.lifecycle_status} /> : <Skel h={22} />}</div>
-        <dl className="facts" style={{ ["--n" as string]: 5 } as React.CSSProperties}>
-          <div><dt>Risk tier</dt><dd>{a ? <TierBadge tier={a.risk_tier} /> : "—"}</dd></div>
-          <div><dt>Trust score</dt><dd>{a ? <TrustScore score={a.trust_score} /> : "—"}</dd></div>
-          <div><dt>Policies attached</dt><dd className="num">{a?.policy_ids.length ?? "—"}</dd></div>
-          <div><dt>Model</dt><dd className="ellipsis">{a?.model ?? "Not set"}</dd></div>
-          <div><dt>Last change</dt><dd>{a ? ago(a.updated_at) : "—"}</dd></div>
-        </dl>
-      </Card>
+      <div className="ad-tabs">
+        <Tabs label="Agent sections" value={tab} onChange={setTab} tabs={[
+          { id: "overview", label: "Overview" },
+          { id: "risk", label: "Risk assessment", count: assessments.data?.length ?? null },
+          { id: "policies", label: "Policies", count: a?.policy_ids.length ?? null },
+          { id: "redteam", label: "Red-team", count: evals.data?.length ?? null },
+          { id: "gateway", label: "Gateway" },
+          { id: "evidence", label: "Evidence & history" },
+        ]} />
+      </div>
 
-      <Card>
-        <div style={{ padding: "4px 18px 0" }}>
-          <Tabs label="Agent sections" value={tab} onChange={setTab} tabs={[
-            { id: "overview", label: "Overview" },
-            { id: "risk", label: "Risk assessment", count: assessments.data?.length ?? null },
-            { id: "policies", label: "Policies", count: a?.policy_ids.length ?? null },
-            { id: "redteam", label: "Red-team", count: evals.data?.length ?? null },
-            { id: "gateway", label: "Gateway" },
-            { id: "evidence", label: "Evidence & history" },
-          ]} />
-        </div>
-        <div style={{ padding: 18 }}>
-          {!a ? <SkelRows rows={6} /> : tab === "overview" ? <OverviewTab agent={a} /> : tab === "risk" ? <RiskTab agent={a} /> : tab === "policies" ? <PoliciesTab agent={a} />
+      {!a ? <Card><SkelRows rows={6} /></Card> : tab === "overview" ? <OverviewTab agent={a} onTab={setTab} /> : (
+        <Card><div style={{ padding: 18 }}>
+          {tab === "risk" ? <RiskTab agent={a} /> : tab === "policies" ? <PoliciesTab agent={a} />
             : tab === "redteam" ? <RedteamTab agent={a} /> : tab === "gateway" ? <GatewayTab agent={a} /> : <EvidenceTab agent={a} />}
-        </div>
-      </Card>
+        </div></Card>
+      )}
     </>
   );
 }
@@ -125,64 +161,142 @@ function HeaderActions({ agent }: { agent: Agent }) {
   );
 }
 
-function OverviewTab({ agent: a }: { agent: Agent }) {
+function OverviewTab({ agent: a, onTab }: { agent: Agent; onTab: (t: TabId) => void }) {
   const history = useAgentHistory(a.id);
-  const events = useEvents({ agent_id: a.id, limit: 8 });
+  const events = useEvents({ agent_id: a.id, limit: 12 });
+  const evals = useEvaluations({ agent_id: a.id });
+  const assessments = useAssessments({ agent_id: a.id });
+  const gate = useGate(a.id, true);
+  const g = gate.data;
+
+  const runs = (evals.data ?? []).filter((e) => e.status === "completed" && e.trust_score != null).sort((x, y) => fin(x) - fin(y));
+  const last = runs[runs.length - 1], prev = runs[runs.length - 2];
+  const decided = (assessments.data ?? []).filter((x) => x.decided_at).sort((x, y) => +new Date(y.decided_at!) - +new Date(x.decided_at!))[0];
+  const cats = last ? Object.entries(last.summary.by_category ?? {}).map(([c, v]) => ({ c, rate: v.total ? (v.blocked / v.total) * 100 : 0, ...v })).sort((x, y) => x.rate - y.rate) : [];
+  const passedChecks = g?.checks.filter((c) => c.passed).length ?? 0;
+  const gated = a.tools.filter((t) => t.policy === "require_approval" || t.policy === "deny").length;
+
+  // One activity feed: lifecycle moves and governance events, newest first.
+  const feed = [
+    ...(history.data ?? []).map((h, i) => ({ key: "h" + i, at: h.created_at, title: h.from_status ? `${LIFE_LABEL[h.from_status as LifecycleStatus] ?? h.from_status} → ${LIFE_LABEL[h.to_status as LifecycleStatus] ?? h.to_status}` : `Registered`, sub: `${h.actor}${h.reason ? ` · ${h.reason}` : ""}`, tone: "stage" })),
+    ...(events.data ?? []).filter((e) => e.event_type !== "agent.status_changed").map((e) => ({ key: e.id, at: e.created_at, title: humanize(e.event_type.replace(/\./g, " ")), sub: e.actor, tone: ["high", "critical", "error"].includes(e.severity) ? "bad" : ["medium", "warning"].includes(e.severity) ? "wait" : "" })),
+  ].sort((x, y) => +new Date(y.at) - +new Date(x.at)).slice(0, 4);
+
   return (
-    <div className="split-l" style={{ alignItems: "start" }}>
-      <div className="stack">
-        <section>
-          <h3 className="card-t" style={{ marginBottom: 12 }}>Profile</h3>
-          <dl className="kv">
-            <dt>Agent ID</dt><dd>{a.external_id}</dd>
-            <dt>Version</dt><dd>{a.version}</dd>
-            <dt>Owner</dt><dd>{a.owner ?? "—"}</dd>
-            <dt>Built by</dt><dd>{a.built_by ?? "—"}</dd>
-            <dt>Autonomy</dt><dd>{a.autonomy_level ? humanize(a.autonomy_level) : "Not set"}</dd>
-            <dt>Endpoint</dt><dd>{a.runtime_config?.base_url ?? <span className="muted">Not configured — needed for tests and red-team runs</span>}</dd>
-            <dt>Capabilities</dt><dd>{a.capabilities.length ? a.capabilities.map(humanize).join(", ") : "—"}</dd>
-            <dt>Tags</dt><dd className="row" style={{ flexWrap: "wrap", gap: 4 }}>{a.tags.length ? a.tags.map((t) => <span key={t} className="tag">{t}</span>) : "—"}</dd>
-            <dt>Registered</dt><dd>{when(a.created_at)}</dd>
-          </dl>
-        </section>
-        <section>
-          <h3 className="card-t" style={{ marginBottom: 6 }}>Tools <span className="muted" style={{ fontWeight: 400 }}>· {a.tools.length}</span></h3>
-          {!a.tools.length ? <p className="small muted">This agent declares no tools.</p> : (
-            <div className="scroll-x"><table>
-              <thead><tr><th>Tool</th><th>Side effect</th><th>Policy</th><th>Description</th></tr></thead>
-              <tbody>{a.tools.map((t) => (
-                <tr key={t.name}>
-                  <td className="strong">{t.name}</td>
-                  <td className="muted">{t.side_effect ? humanize(t.side_effect) : "—"}</td>
-                  <td><Pill tone={t.policy === "deny" ? "danger" : t.policy === "require_approval" ? "wait" : "accent"} dot>{t.policy === "require_approval" ? "Needs approval" : humanize(t.policy ?? "allow")}</Pill></td>
-                  <td className="muted">{t.description ?? "—"}</td>
-                </tr>))}</tbody>
-            </table></div>
-          )}
-        </section>
+    <>
+      <section className="kpis" data-cols={4} style={{ ["--cols" as string]: 4 } as React.CSSProperties} aria-label="Agent figures">
+        <Kpi icon={ShieldCheck} label="Trust score" value={a.trust_score != null ? <span style={{ color: a.trust_score < 95 ? "var(--danger)" : undefined }}>{a.trust_score.toFixed(1)}</span> : "—"}
+          vis={runs.length > 1 ? <Sparkline values={runs.slice(-10).map((r) => r.trust_score as number)} width={88} height={30} color={(a.trust_score ?? 0) >= 95 ? "var(--accent)" : "var(--danger)"} /> : undefined}
+          foot={last && prev ? <span><b className={(last.trust_score as number) >= (prev.trust_score as number) ? "kpi-up" : "kpi-down"}>{(last.trust_score as number) >= (prev.trust_score as number) ? "+" : "−"}{Math.abs((last.trust_score as number) - (prev.trust_score as number)).toFixed(1)}</b> vs previous run · release bar 95</span> : "Release bar is 95"} />
+        <Kpi icon={ClipboardCheck} label="Risk tier" value={a.risk_tier ? <>Tier {a.risk_tier}<small className="kpi-of"> {["Minimal", "Limited", "High", "Critical"][a.risk_tier - 1]}</small></> : "Not assessed"}
+          vis={<span className="ad-tier" aria-hidden>{TIER_COL.map((c, i) => <i key={i} style={{ background: a.risk_tier && i < a.risk_tier ? c : undefined }} />)}</span>}
+          foot={decided ? `${sentence(decided.decision ?? "")} by ${decided.decided_by?.split("@")[0]} · ${dayFmt.format(new Date(decided.decided_at!))}` : "No risk decision yet"} />
+        <Kpi icon={Swords} label="Red-team runs" value={String(runs.length)}
+          vis={runs.length ? <MiniBars values={runs.slice(-10).map((r) => r.block_rate_pct ?? 0)} width={72} height={30} /> : undefined}
+          foot={last ? `Latest blocked ${(last.block_rate_pct ?? 0).toFixed(1)}% of ${last.prompts_total} attacks` : "No runs yet"} />
+        <Kpi icon={g?.allowed ? ShieldCheck : X} label="Release gate" tone={g && !g.allowed ? "bad" : undefined}
+          value={!g ? "—" : g.allowed ? "Open" : <span style={{ color: "var(--danger)" }}>Blocked</span>}
+          vis={g ? <CheckRing ok={g.allowed} size={30} /> : undefined}
+          foot={g ? `${passedChecks} of ${g.checks.length} checks passed` : "Checking…"} />
+      </section>
+
+      <div className="ad-r1">
+        <Card labelledBy="t-ts">
+          <CardHeader id="t-ts" title="Trust score by red-team run" action={<button type="button" className="link" onClick={() => onTab("redteam")}>All runs<ArrowRight className="ic" aria-hidden /></button>} />
+          <div className="ad-ts">
+            <div className="ad-ts-chart">
+              {evals.isLoading ? <Skel h={220} /> : runs.length < 2 ? <Empty icon={Swords} title="Not enough runs yet" /> : (
+                <RangeTrend single name="Trust score" ariaLabel="Trust score per red-team run" labels={runs.map((r) => dayFmt.format(new Date(fin(r))))}
+                  longs={runs.map((r) => `Run on ${when(r.finished_at ?? r.created_at)}`)} avg={runs.map((r) => r.trust_score as number)}
+                  refValue={95} refLabel="Release bar 95" yMin={Math.min(60, Math.floor(Math.min(...runs.map((r) => r.trust_score as number)) / 10) * 10)} yMax={100} fmt={(v) => v.toFixed(1)}
+                  extra={runs.map((r) => [{ name: "Attacks blocked", value: `${(r.block_rate_pct ?? 0).toFixed(1)}%` }])} />
+              )}
+            </div>
+            <div className="ad-ts-cats">
+              <div className="gv-rank-h"><span>Latest run · by attack type</span><span>Blocked</span></div>
+              {!cats.length ? <p className="small muted">No completed run.</p> : (
+                <div className="ad-cats">
+                  {cats.map((c) => (
+                    <div key={c.c} className="ad-cat" title={`${c.blocked} of ${c.total} blocked`}>
+                      <span className="n">{humanize(c.c)}</span>
+                      <span className="gv-bb"><i style={{ width: `${c.rate}%` }} />{c.rate < 95 && <em style={{ left: `${c.rate}%`, width: `${95 - c.rate}%` }} />}</span>
+                      <b className="num">{c.rate.toFixed(0)}%</b>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        <Card labelledBy="t-gate">
+          <CardHeader id="t-gate" title="Release gate" action={<button type="button" className="link" onClick={() => onTab("gateway")}>Gateway<ArrowRight className="ic" aria-hidden /></button>} />
+          <div className="ad-gate">
+            {gate.isLoading ? <SkelRows rows={4} /> : !g ? <p className="small muted">Gate status unavailable.</p> : (
+              <>
+                <div className={`ad-verdict${g.allowed ? "" : " bad"}`}>
+                  {g.allowed ? <ShieldCheck className="ic" aria-hidden /> : <X className="ic" aria-hidden />}
+                  <div><b>{g.allowed ? "Cleared to serve traffic" : "Not cleared for release"}</b><small>{g.allowed ? "Every check below passes." : `${g.checks.length - passedChecks} check${g.checks.length - passedChecks === 1 ? "" : "s"} still failing.`}</small></div>
+                </div>
+                <ul className="ad-checks">
+                  {g.checks.map((c) => (
+                    <li key={c.check} className={c.passed ? "ok" : "no"}>
+                      <span className="ck" aria-label={c.passed ? "Passed" : "Failed"}>{c.passed ? <Check className="ic" /> : <X className="ic" />}</span>
+                      <div><b>{CHECK_LABEL[c.check] ?? humanize(c.check)}</b><small>{c.detail}</small>
+                        {!!c.conditions?.length && <small className="cond">Conditions: {c.conditions.join("; ")}</small>}</div>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        </Card>
       </div>
-      <div className="stack">
-        <section>
-          <h3 className="card-t" style={{ marginBottom: 12 }}>Lifecycle history</h3>
-          {history.isLoading ? <SkelRows rows={4} /> : !history.data?.length ? <p className="small muted">No changes yet.</p> : (
-            <ol className="timeline">
-              {[...history.data].reverse().map((h, i) => (
-                <li key={i}><b>{h.from_status ? `${LIFE_LABEL[h.from_status as LifecycleStatus] ?? h.from_status} → ` : ""}{LIFE_LABEL[h.to_status as LifecycleStatus] ?? h.to_status}</b>
-                  <small>{h.actor} · {when(h.created_at)}{h.reason ? ` · ${h.reason}` : ""}</small></li>
+
+      <div className="ad-r2">
+        <Card labelledBy="t-tools">
+          <CardHeader id="t-tools" title="Tools & permissions" sub={`${a.tools.length} tools · ${gated} need a person or are blocked`} />
+          {!a.tools.length ? <div className="ad-pad"><p className="small muted">This agent declares no tools.</p></div> : (
+            <ul className="ad-tools">
+              {a.tools.map((t) => (
+                <li key={t.name}>
+                  <span className={`ad-se ${t.side_effect === "write" || t.side_effect === "external" ? "w" : ""}`} aria-hidden><Wrench className="ic" /></span>
+                  <div><b className="mono">{t.name}</b><small>{t.description ?? `${t.side_effect ? humanize(t.side_effect) : "No"} access`}</small></div>
+                  <Pill tone={t.policy === "deny" ? "danger" : t.policy === "require_approval" ? "wait" : "accent"} dot>{t.policy === "require_approval" ? "Needs approval" : humanize(t.policy ?? "allow")}</Pill>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card labelledBy="t-prof">
+          <CardHeader id="t-prof" title="Configuration" />
+          <dl className="ad-kv">
+            <div><dt>Autonomy</dt><dd>{a.autonomy_level ? humanize(a.autonomy_level) : "Not set"}</dd></div>
+            <div><dt>Capabilities</dt><dd>{a.capabilities.length ? a.capabilities.map(humanize).join(", ") : "—"}</dd></div>
+            <div><dt>Policies</dt><dd>{a.policy_ids.length} attached <button type="button" className="ad-lnk" onClick={() => onTab("policies")}>Manage</button></dd></div>
+            <div><dt>Endpoint</dt><dd className="mono ellipsis" title={a.runtime_config?.base_url ?? ""}>{a.runtime_config?.base_url ?? <span className="muted">Not configured</span>}</dd></div>
+            <div><dt>Tags</dt><dd className="row" style={{ flexWrap: "wrap", gap: 4 }}>{a.tags.length ? a.tags.map((t) => <span key={t} className="tag">{t}</span>) : "—"}</dd></div>
+            <div><dt>Registered</dt><dd>{when(a.created_at)}</dd></div>
+          </dl>
+        </Card>
+
+        <Card labelledBy="t-act">
+          <CardHeader id="t-act" title="Activity" action={<button type="button" className="link" onClick={() => onTab("evidence")}>Full history<ArrowRight className="ic" aria-hidden /></button>} />
+          {history.isLoading ? <div className="ad-pad"><SkelRows rows={4} /></div> : !feed.length ? <div className="ad-pad"><p className="small muted">No activity yet.</p></div> : (
+            <ol className="ad-feed">
+              {feed.map((f) => (
+                <li key={f.key} className={f.tone}>
+                  <span className="pt" aria-hidden />
+                  <div><b>{f.title}</b><small>{f.sub}</small></div>
+                  <time dateTime={f.at}>{ago(f.at)}</time>
+                </li>
               ))}
             </ol>
           )}
-        </section>
-        <section>
-          <h3 className="card-t" style={{ marginBottom: 4 }}>Recent events</h3>
-          {events.isLoading ? <SkelRows rows={3} /> : !events.data?.length ? <p className="small muted">No events yet.</p> : (
-            <ul className="list">{events.data.map((e) => (
-              <li key={e.id}><div style={{ minWidth: 0 }}><b className="ellipsis" style={{ display: "block" }}>{humanize(e.event_type)}</b><span className="small muted">{e.actor} · {ago(e.created_at)}</span></div><SeverityBadge severity={e.severity} /></li>
-            ))}</ul>
-          )}
-        </section>
+        </Card>
       </div>
-    </div>
+    </>
   );
 }
 

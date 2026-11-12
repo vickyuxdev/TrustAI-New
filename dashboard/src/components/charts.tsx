@@ -474,10 +474,11 @@ export function Gauge({ used, projected, size = 210, center }: { used: number; p
 
 // ─── Range trend: average line inside a min–max band, with a reference line ──
 
-export function RangeTrend({ labels, longs, avg, lo, hi, refValue, refLabel, yMin, yMax, step = 10, fmt, extra, ariaLabel }: {
-  labels: string[]; longs?: string[]; avg: number[]; lo: number[]; hi: number[]; refValue?: number; refLabel?: string;
-  yMin: number; yMax: number; step?: number; fmt: (v: number) => string; extra?: TipRow[][]; ariaLabel: string;
+export function RangeTrend({ labels, longs, avg, lo: loIn, hi: hiIn, refValue, refLabel, yMin, yMax, step = 10, fmt, extra, single = false, name = "Average", ariaLabel }: {
+  labels: string[]; longs?: string[]; avg: number[]; lo?: number[]; hi?: number[]; refValue?: number; refLabel?: string;
+  yMin: number; yMax: number; step?: number; fmt: (v: number) => string; extra?: TipRow[][]; single?: boolean; name?: string; ariaLabel: string;
 }) {
+  const lo = loIn ?? avg, hi = hiIn ?? avg;
   const [ref, { w, h }] = useSize<HTMLDivElement>();
   const [tip, setTip] = useState<TipState>(null);
   const [hot, setHot] = useState<number | null>(null);
@@ -511,9 +512,9 @@ export function RangeTrend({ labels, longs, avg, lo, hi, refValue, refLabel, yMi
             </g>
           ))}
           <path d={area} fill={`url(#rt${gid})`} />
-          {band && <path d={band} fill="var(--accent)" opacity=".1" />}
-          {n > 1 && <path d={smooth(P(hi))} fill="none" stroke="var(--accent-line)" strokeWidth={1} />}
-          {n > 1 && <path d={smooth(P(lo))} fill="none" stroke="var(--accent-line)" strokeWidth={1} />}
+          {!single && band && <path d={band} fill="var(--accent)" opacity=".1" />}
+          {!single && n > 1 && <path d={smooth(P(hi))} fill="none" stroke="var(--accent-line)" strokeWidth={1} />}
+          {!single && n > 1 && <path d={smooth(P(lo))} fill="none" stroke="var(--accent-line)" strokeWidth={1} />}
           {refValue != null && (
             <g>
               <line x1={m.l} x2={w - m.r} y1={y(refValue)} y2={y(refValue)} stroke="var(--danger)" strokeWidth={1.25} strokeDasharray="4 4" opacity=".75" />
@@ -523,12 +524,12 @@ export function RangeTrend({ labels, longs, avg, lo, hi, refValue, refLabel, yMi
           <path d={line} fill="none" stroke="var(--accent)" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />
           {hot != null && <line x1={x(hot)} x2={x(hot)} y1={m.t} y2={m.t + ph} stroke="var(--line-2)" strokeWidth={1} />}
           {avg.map((v, i) => (
-            <circle key={i} cx={x(i)} cy={y(v)} r={i === n - 1 || i === hot ? 4.5 : 0} fill="var(--accent)" stroke="var(--panel)" strokeWidth={2} />
+            <circle key={i} cx={x(i)} cy={y(v)} r={i === n - 1 || i === hot ? 4.5 : single ? 3 : 0} fill={refValue != null && v < refValue ? "var(--danger)" : "var(--accent)"} stroke="var(--panel)" strokeWidth={2} />
           ))}
           {labels.map((lab, i) => (
             <g key={i}>
               <rect x={x(i) - col / 2} y={m.t} width={col} height={ph} fill="transparent"
-                onMouseEnter={() => { setHot(i); setTip({ x: x(i), y: y(hi[i]), title: longs?.[i] ?? lab, rows: [{ name: "Average", value: fmt(avg[i]), color: "var(--accent)" }, { name: "Highest", value: fmt(hi[i]) }, { name: "Lowest", value: fmt(lo[i]) }, ...(extra?.[i] ?? [])] }); }} />
+                onMouseEnter={() => { setHot(i); setTip({ x: x(i), y: y(hi[i]), title: longs?.[i] ?? lab, rows: [{ name, value: fmt(avg[i]), color: "var(--accent)" }, ...(single ? [] : [{ name: "Highest", value: fmt(hi[i]) }, { name: "Lowest", value: fmt(lo[i]) }]), ...(extra?.[i] ?? [])] }); }} />
               {(i === n - 1 || (i % skip === 0 && n - 1 - i >= skip)) && <text x={x(i)} y={h - 6} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} className="ax">{lab}</text>}
             </g>
           ))}
