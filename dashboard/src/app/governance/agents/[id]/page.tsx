@@ -29,6 +29,16 @@ type TabId = "overview" | "risk" | "policies" | "redteam" | "gateway" | "evidenc
 const CHECK_LABEL: Record<string, string> = {
   lifecycle_status: "Approved for release", risk_decision: "Risk decision recorded", trust_score: "Trust score at or above 95", policies_attached: "Policies attached",
 };
+const STAGE_HELP: Record<string, string> = {
+  registered: "Added to the registry by its builder", onboarded: "Endpoint connected and tools declared", assessed: "Risk questionnaire classified into a tier",
+  evaluated: "Red-team run completed and trust score recorded", approved: "A person approved it for release", deployed: "Serving traffic through the AI gateway",
+};
+const STAGE_SHORT: Record<string, string> = { registered: "Add to registry", onboarded: "Connect endpoint", assessed: "Risk questionnaire", evaluated: "Red-team run", approved: "Human sign-off", deployed: "Go live" };
+const NEXT_STEP: Record<string, string> = {
+  registered: "Connect endpoint and tools", onboarded: "Complete risk questionnaire", assessed: "Run a red-team evaluation",
+  evaluated: "Sign-off · needs trust 95+", approved: "Deploy behind the AI gateway", deployed: "Live behind the AI gateway",
+  suspended: "Fix checks, re-run red-team", retired: "No longer serving",
+};
 const TIER_COL = ["var(--g1)", "var(--g2)", "var(--g3)", "var(--danger)"];
 const dayFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 const sentence = (v: string) => { const t = v.replace(/_/g, " "); return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase(); };
@@ -47,7 +57,8 @@ export default function AgentDetailPage() {
 
   // Date each lifecycle stage was reached, from the status history.
   const reached: Record<string, string> = {};
-  (history.data ?? []).forEach((h) => { reached[h.to_status] = h.created_at; });
+  const who: Record<string, string> = {};
+  (history.data ?? []).forEach((h) => { reached[h.to_status] = h.created_at; who[h.to_status] = h.actor.split("@")[0]; });
   const path = LIFECYCLE_STATUSES.filter((s) => s !== "suspended" && s !== "retired");
   const idx = a ? path.indexOf(a.lifecycle_status as (typeof path)[number]) : -1;
   const off = a && (a.lifecycle_status === "suspended" || a.lifecycle_status === "retired");
@@ -75,18 +86,39 @@ export default function AgentDetailPage() {
           </div>
           <div className="pd-actions">{a && <HeaderActions agent={a} />}</div>
         </header>
-        <ol className={`ad-steps${off ? " off" : ""}`} aria-label="Lifecycle">
-          {path.map((s, i) => {
-            const state = off ? (reached[s] ? "done" : "") : idx > i ? "done" : idx === i ? "cur" : "";
-            return (
-              <li key={s} className={state}>
-                <span className="dot" aria-hidden>{state === "done" || (state === "cur" && i === path.length - 1) ? <Check className="ic" /> : i + 1}</span>
-                <span className="lb"><b>{LIFE_LABEL[s]}</b><small>{reached[s] ? dayFmt.format(new Date(reached[s])) : state === "cur" ? "Now" : "—"}</small></span>
+        <div className={`ad-flow${off ? " off" : ""}`}>
+          <div className="ad-flow-h">
+            <span>Lifecycle</span>
+            <b>{a ? (off ? LIFE_LABEL[a.lifecycle_status] : `Stage ${idx + 1} of ${path.length}`) : "—"}</b>
+          </div>
+          <ol className="ad-steps" aria-label="Lifecycle stages">
+            {path.map((s, i) => {
+              const state = off ? (reached[s] ? "done" : "") : idx > i ? "done" : idx === i ? "cur" : "";
+              const final = state === "cur" && i === path.length - 1;
+              return (
+                <li key={s} className={`${state}${final ? " final" : ""}`} title={STAGE_HELP[s]}>
+                  <span className="dot" aria-hidden>{state === "done" || final ? <Check className="ic" /> : i + 1}</span>
+                  <span className="lb">
+                    <b>{LIFE_LABEL[s]}{state === "cur" && !final && <em>Current</em>}</b>
+                    <small>{reached[s] ? `${dayFmt.format(new Date(reached[s]))} · ${who[s]}` : state === "cur" ? "In progress" : STAGE_SHORT[s]}</small>
+                  </span>
+                </li>
+              );
+            })}
+            {off && a && (
+              <li className="bad">
+                <span className="dot" aria-hidden><X className="ic" /></span>
+                <span className="lb"><b>{LIFE_LABEL[a.lifecycle_status]}</b><small>{reached[a.lifecycle_status] ? `${dayFmt.format(new Date(reached[a.lifecycle_status]))} · ${who[a.lifecycle_status]}` : "Now"}</small></span>
               </li>
-            );
-          })}
-          {off && a && <li className="bad"><span className="dot" aria-hidden><X className="ic" /></span><span className="lb"><b>{LIFE_LABEL[a.lifecycle_status]}</b><small>{reached[a.lifecycle_status] ? dayFmt.format(new Date(reached[a.lifecycle_status])) : "Now"}</small></span></li>}
-        </ol>
+            )}
+          </ol>
+          {a && (
+            <div className={`ad-next${off ? " is-bad" : a.lifecycle_status === "deployed" ? " is-live" : ""}`}>
+              <span>{off ? "To restore" : a.lifecycle_status === "deployed" ? "Status" : "Next step"}</span>
+              <b>{NEXT_STEP[a.lifecycle_status]}</b>
+            </div>
+          )}
+        </div>
       </section>
 
       <div className="ad-tabs">
@@ -100,9 +132,9 @@ export default function AgentDetailPage() {
         ]} />
       </div>
 
-      {!a ? <Card><SkelRows rows={6} /></Card> : tab === "overview" ? <OverviewTab agent={a} onTab={setTab} /> : (
+      {!a ? <Card><SkelRows rows={6} /></Card> : tab === "overview" ? <OverviewTab agent={a} onTab={setTab} /> : tab === "risk" ? <RiskTab agent={a} /> : (
         <Card><div style={{ padding: 18 }}>
-          {tab === "risk" ? <RiskTab agent={a} /> : tab === "policies" ? <PoliciesTab agent={a} />
+          {tab === "policies" ? <PoliciesTab agent={a} />
             : tab === "redteam" ? <RedteamTab agent={a} /> : tab === "gateway" ? <GatewayTab agent={a} /> : <EvidenceTab agent={a} />}
         </div></Card>
       )}
@@ -300,39 +332,124 @@ function OverviewTab({ agent: a, onTab }: { agent: Agent; onTab: (t: TabId) => v
   );
 }
 
+const TIER_NAMES = ["Minimal", "Limited", "High", "Critical"];
+const fmtAnswer = (v: unknown): string => (v === true ? "Yes" : v === false ? "No" : Array.isArray(v) ? v.map((x) => fmtAnswer(x)).join(", ") : v == null ? "—" : sentence(String(v)).replace(/\bGdpr\b/i, "GDPR").replace(/\bEu Ai Act\b/i, "EU AI Act"));
+
 function RiskTab({ agent: a }: { agent: Agent }) {
   const list = useAssessments({ agent_id: a.id });
   const create = useCreateAssessment();
   const router = useRouter();
   const toast = useToast();
-  const items = list.data ?? [];
+  const items = [...(list.data ?? [])].sort((x, y) => +new Date(y.created_at) - +new Date(x.created_at));
   const open = items.find((x) => x.status === "draft" || x.status === "submitted");
+  const cur = items.find((x) => x.risk_tier != null);
   const start = () => create.mutate({ agent_id: a.id }, { onSuccess: (x) => router.push(`/governance/risk/${x.id}`), onError: (e) => toast(errMsg(e), true) });
+  const action = open ? <Link href={`/governance/risk/${open.id}`} className="btn btn-primary"><ClipboardCheck className="ic" aria-hidden />Continue draft</Link>
+    : <button type="button" className="btn btn-primary" disabled={create.isPending} onClick={start}><Plus className="ic" aria-hidden />{create.isPending ? "Starting…" : "New assessment"}</button>;
+
+  if (list.isError) return <Card><ErrorState error={list.error} compact /></Card>;
+  if (list.isLoading) return <Card><SkelRows rows={5} /></Card>;
+  if (!cur) return <Card><Empty icon={ClipboardCheck} title="Not assessed yet" action={action}>The questionnaire is pre-filled from the agent&apos;s build facts. Submitting it sets a risk tier; a person then approves or rejects.</Empty></Card>;
+
+  const tier = cur.risk_tier as number;
+  const reasons = cur.tier_reasons.filter((r) => r.points != null).sort((x, y) => (y.points ?? 0) - (x.points ?? 0));
+  const floors = cur.tier_reasons.filter((r) => r.floor);
+  const maxPts = Math.max(1, ...reasons.map((r) => Math.abs(r.points ?? 0)));
+  const added = reasons.filter((r) => (r.points ?? 0) > 0).reduce((t, r) => t + (r.points ?? 0), 0);
+  const removed = reasons.filter((r) => (r.points ?? 0) < 0).reduce((t, r) => t + (r.points ?? 0), 0);
+  const tone = cur.decision === "rejected" ? "bad" : cur.decision === "approved_with_conditions" ? "wait" : cur.decision ? "" : "pending";
+
   return (
-    <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <p className="small muted" style={{ margin: 0 }}>The questionnaire is pre-filled from the agent&apos;s build facts. Submitting classifies it into a risk tier; a person then approves or rejects.</p>
-        {open ? <Link href={`/governance/risk/${open.id}`} className="btn btn-primary"><ClipboardCheck className="ic" aria-hidden />Continue draft</Link>
-          : <button type="button" className="btn btn-primary" disabled={create.isPending} onClick={start}><Plus className="ic" aria-hidden />{create.isPending ? "Starting…" : "Start assessment"}</button>}
+    <>
+      <div className="rk-r1">
+        <Card labelledBy="t-why">
+          <CardHeader id="t-why" title="How the risk tier was set" action={<Link className="link" href={`/governance/risk/${cur.id}`}>Open questionnaire<ArrowRight className="ic" aria-hidden /></Link>} />
+          <div className="rk-why">
+            <div className="rk-sum">
+              <div className="rk-tier">
+                <span>Risk tier</span>
+                <b>Tier {tier}<small>{TIER_NAMES[tier - 1]}</small></b>
+              </div>
+              <div className="rk-scale" role="img" aria-label={`Tier ${tier} of 4`}>
+                {TIER_NAMES.map((n, i) => (
+                  <div key={n} className={i + 1 === tier ? "on" : i + 1 < tier ? "past" : ""}>
+                    <i style={{ background: i + 1 <= tier ? TIER_COL[i] : undefined }} />
+                    <span>{i + 1} · {n}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="rk-score">
+                <span>Risk score</span>
+                <b className="num">{cur.risk_score ?? "—"}<small> / 100</small></b>
+                <em><span className="up">+{added}</span> raised · <span>{removed}</span> lowered</em>
+              </div>
+            </div>
+            <div className="rk-bars">
+              <div className="rk-bars-h"><span>Factor</span><span>Answer</span><span className="c">Lowers risk ← → Raises risk</span><span className="r">Points</span></div>
+              {reasons.map((r) => {
+                const v = r.points ?? 0, w = (Math.abs(v) / maxPts) * 50;
+                return (
+                  <div key={r.question} className="rk-row">
+                    <span className="rk-q" title={r.label}>{r.label ?? humanize(r.question ?? "")}</span>
+                    <span className="rk-a" title={fmtAnswer(r.answer)}>{fmtAnswer(r.answer)}</span>
+                    <span className="rk-b"><i className={v < 0 ? "neg" : "pos"} style={v < 0 ? { right: "50%", width: `${w}%` } : { left: "50%", width: `${w}%` }} /></span>
+                    <b className={`num ${v < 0 ? "neg" : ""}`}>{v > 0 ? "+" : v < 0 ? "−" : ""}{Math.abs(v)}</b>
+                  </div>
+                );
+              })}
+            </div>
+            {floors.map((f) => (
+              <p key={f.floor} className="rk-floor"><Sparkles className="ic" aria-hidden /><span><b>Minimum tier rule.</b> {f.floor?.replace("->", "→")}</span></p>
+            ))}
+          </div>
+        </Card>
+
+        <div className="rk-side">
+          <Card labelledBy="t-dec">
+            <CardHeader id="t-dec" title="Decision" />
+            <div className="rk-dec">
+              <div className={`rk-verdict ${tone}`}>
+                {tone === "bad" ? <X className="ic" aria-hidden /> : tone === "pending" ? <ClipboardCheck className="ic" aria-hidden /> : <Check className="ic" aria-hidden />}
+                <div><b>{cur.decision ? sentence(cur.decision) : "Waiting for a decision"}</b>
+                  <small>{cur.decided_by ? `${cur.decided_by} · ${when(cur.decided_at!)}` : "A reviewer needs to approve or reject this tier."}</small></div>
+                {!cur.decision && <Link href={`/governance/risk/${cur.id}`} className="btn btn-primary btn-sm">Decide</Link>}
+              </div>
+              {cur.conditions.length > 0 && (
+                <div className="rk-conds">
+                  <span className="rk-lbl">Conditions of approval</span>
+                  <ul>{cur.conditions.map((c) => <li key={c}><i aria-hidden />{c}</li>)}</ul>
+                </div>
+              )}
+              {cur.decision_note && <p className="small muted" style={{ margin: 0 }}>“{cur.decision_note}”</p>}
+            </div>
+          </Card>
+          <Card labelledBy="t-ctl">
+            <CardHeader id="t-ctl" title="Required controls" action={<span className="rk-count">{cur.required_controls.length} for Tier {tier}</span>} />
+            <ol className="rk-ctl">
+              {cur.required_controls.map((c, i) => <li key={c}><span>{i + 1}</span>{c}</li>)}
+            </ol>
+          </Card>
+        </div>
       </div>
-      {list.isError ? <ErrorState error={list.error} compact /> : list.isLoading ? <SkelRows rows={3} /> : !items.length ? (
-        <Empty icon={ClipboardCheck} title="Not assessed yet">Start an assessment to give this agent a risk tier.</Empty>
-      ) : (
+
+      <Card labelledBy="t-hist">
+        <CardHeader id="t-hist" title="Assessment history" sub={`${items.length} assessment${items.length === 1 ? "" : "s"} · the newest sets the tier`} action={action} bordered />
         <div className="scroll-x"><table>
-          <thead><tr><th>Started</th><th>Status</th><th>Tier</th><th className="r">Score</th><th>Decision</th><th>Decided by</th><th className="r">Required controls</th></tr></thead>
+          <thead><tr><th>Started</th><th>Status</th><th>Tier</th><th className="r">Score</th><th>Decision</th><th>Decided by</th><th className="r">Controls</th><th className="r">Conditions</th></tr></thead>
           <tbody>{items.map((x) => (
             <tr key={x.id} className="clickable" onClick={() => router.push(`/governance/risk/${x.id}`)}>
               <td className="strong">{when(x.created_at)}</td>
               <td><AssessmentBadge status={x.status} /></td>
               <td><TierBadge tier={x.risk_tier} /></td>
               <td className="r num">{x.risk_score ?? "—"}</td>
-              <td>{x.status === "decided" || x.status === "classified" ? <DecisionBadge decision={x.decision} /> : <span className="muted">—</span>}</td>
+              <td>{x.decision ? <DecisionBadge decision={x.decision} /> : <span className="muted">—</span>}</td>
               <td className="muted">{x.decided_by ?? "—"}</td>
-              <td className="r">{x.required_controls.length}</td>
+              <td className="r num">{x.required_controls.length}</td>
+              <td className="r num">{x.conditions.length}</td>
             </tr>))}</tbody>
         </table></div>
-      )}
-    </div>
+      </Card>
+    </>
   );
 }
 
